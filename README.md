@@ -127,7 +127,7 @@ The live-mock Playwright suite uses real React-to-Flask HTTP, sessions, CSRF, an
 
 ## Deployment
 
-Two configurations are prepared. [`render.yaml`](render.yaml) is the existing paid Render blueprint. [`render-free.yaml`](render-free.yaml) defines one free Render Docker web service backed by Neon PostgreSQL and Upstash Redis. Follow the separate [free deployment guide](docs/08_free_deployment_guide.md) and [checklist](docs/08_free_deployment_checklist.md); select `render-free.yaml` explicitly in Render because the default `render.yaml` declares paid resources. The app is not deployed. Free hosting has cold starts and quotas, and OpenAI usage is billed separately. A deployment remains blocked until Render's trusted proxy hop counts are verified; the Docker image and real Neon/Upstash connections have not yet been tested.
+Two configurations are prepared. [`render.yaml`](render.yaml) is the existing paid Render blueprint. [`render-free.yaml`](render-free.yaml) defines one free Render Docker web service backed by Neon PostgreSQL and Upstash Redis. Follow the separate [free deployment guide](docs/08_free_deployment_guide.md) and [checklist](docs/08_free_deployment_checklist.md); select `render-free.yaml` explicitly in Render because the default `render.yaml` declares paid resources. The app is not deployed. Free hosting has cold starts and quotas, and OpenAI usage is billed separately. The Docker image and local container startup have been verified; real Neon/Upstash connections and Render's trusted proxy hop counts remain unverified, so deployment is still blocked.
 
 ```sh
 docker build -t momentos:local .
