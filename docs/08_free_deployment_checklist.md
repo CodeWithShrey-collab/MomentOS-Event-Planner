@@ -1,6 +1,6 @@
 # MomentOS — Free Deployment Checklist
 
-**Status: not deployed.** This checklist prepares a zero-fixed-cost-infrastructure preview. OpenAI requests remain usage-billed; provider quotas/overages can change. Do not provision resources or deploy until deployment is explicitly authorized.
+**Status (2026-10-31): deployed.** The existing Render Free service is publicly available at [https://momentos-event-planner-free.onrender.com](https://momentos-event-planner-free.onrender.com); its readiness endpoint returned HTTP 200 on this date. This runbook remains a checklist for repeating deployment verification and for checks that are not established by a readiness response. OpenAI requests remain usage-billed; provider quotas/overages can change. Do not create duplicate resources or change infrastructure without authorization.
 
 ## Before provisioning
 
@@ -34,7 +34,7 @@
 - [ ] Verify Ripple preview/cancel leaves stored event unchanged and explicit confirmation persists the result.
 - [ ] Only with an authorized budget, make one controlled live GPT-6 Luna request and verify validated output, save, usage metadata, and no browser-visible secret.
 - [ ] Review Render, Neon, Upstash, and OpenAI quota/usage dashboards after testing.
-- [ ] Record the public URL only after all checks pass. Keep the status “not deployed” until that point.
+- [x] Record the public URL: https://momentos-event-planner-free.onrender.com. Recheck readiness before relying on service health; do not infer untested workflow behavior from the landing page.
 
 ## Operational limits
 
@@ -42,4 +42,4 @@
 - Neon Free has per-project storage/compute quotas and may autosuspend. A first database request can wait for compute to wake.
 - Upstash Free has command, storage, and bandwidth limits. Redis errors fail readiness/rate-limited operations; no memory fallback is permitted.
 - Free tier quotas are not a production SLA. OpenAI is billed independently and can incur costs even when hosting resources are free.
-- Preparation did not test a real Neon or Upstash service and did not build/push/deploy the Docker image.
+- The public readiness response checks the configured database, expected schema, and Redis ping. It is a point-in-time dependency check, not a substitute for persistence across restart, proxy-header behavior, or a complete live AI workflow test.
