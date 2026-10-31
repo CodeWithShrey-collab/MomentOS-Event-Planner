@@ -116,20 +116,21 @@ class AIValidationFailure(ValueError):
 
 @dataclass(frozen=True)
 class PricingConfig:
-    """Optional externally configured USD-per-million token rates.
-
-    No undocumented model price is embedded in this package. Leave pricing
-    unset until the deploying operator supplies verified pricing and a version.
-    """
+    """Versioned, standard USD-per-million GPT-6 Luna token rates."""
 
     version: str
     input_usd_per_million_tokens: Decimal
     output_usd_per_million_tokens: Decimal
+    cached_input_usd_per_million_tokens: Decimal = Decimal("0.01")
 
     def __post_init__(self) -> None:
         if not self.version.strip():
             raise ValueError("pricing version must be non-empty")
-        if self.input_usd_per_million_tokens < 0 or self.output_usd_per_million_tokens < 0:
+        if min(
+            self.input_usd_per_million_tokens,
+            self.output_usd_per_million_tokens,
+            self.cached_input_usd_per_million_tokens,
+        ) < 0:
             raise ValueError("token prices cannot be negative")
 
 
@@ -606,10 +607,16 @@ def _usage_record(operation: str, effort: str, response: Any, elapsed_ms: int, p
     input_tokens = _optional_nonnegative_int(getattr(usage, "input_tokens", None))
     output_tokens = _optional_nonnegative_int(getattr(usage, "output_tokens", None))
     total_tokens = _optional_nonnegative_int(getattr(usage, "total_tokens", None))
+    input_details = getattr(usage, "input_tokens_details", None)
+    cached_input_tokens = _optional_nonnegative_int(getattr(input_details, "cached_tokens", None)) or 0
+    if input_tokens is not None:
+        cached_input_tokens = min(cached_input_tokens, input_tokens)
     estimated: Decimal | None = None
     if pricing is not None and input_tokens is not None and output_tokens is not None:
+        uncached_input_tokens = input_tokens - cached_input_tokens
         estimated = (
-            Decimal(input_tokens) * pricing.input_usd_per_million_tokens
+            Decimal(uncached_input_tokens) * pricing.input_usd_per_million_tokens
+            + Decimal(cached_input_tokens) * pricing.cached_input_usd_per_million_tokens
             + Decimal(output_tokens) * pricing.output_usd_per_million_tokens
         ) / Decimal(1_000_000)
         estimated = estimated.quantize(Decimal("0.000001"), rounding=ROUND_HALF_EVEN)

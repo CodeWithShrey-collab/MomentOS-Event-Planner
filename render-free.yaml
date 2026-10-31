@@ -1,0 +1,64 @@
+# Free-only alternative to the paid render.yaml. In the Render Dashboard,
+# select this exact path in Blueprint Path; never import the default paid file.
+services:
+  - type: web
+    name: momentos-event-planner-free
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    dockerCommand: sh /app/backend/start-free-render.sh
+    numInstances: 1
+    autoDeployTrigger: 'off'
+    healthCheckPath: /api/v1/health/ready
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_BASE_URL
+        sync: false
+      - key: TRUSTED_ORIGINS
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      - key: RATE_LIMIT_STORAGE_URI
+        sync: false
+      - key: SESSION_COOKIE_SECURE
+        value: "true"
+      - key: SESSION_COOKIE_SAMESITE
+        value: Lax
+      - key: AI_MODE
+        value: live
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-6-luna
+      - key: OPENAI_REASONING_EFFORT
+        value: low
+      - key: OPENAI_MAX_OUTPUT_TOKENS
+        value: "3000"
+      - key: OPENAI_TIMEOUT_SECONDS
+        value: "25"
+      - key: AI_DAILY_REQUEST_LIMIT
+        value: "20"
+      - key: AI_PER_MINUTE_LIMIT
+        value: "5"
+      - key: AI_PRICING_CONFIG_VERSION
+        value: openai-gpt-6-luna-standard-2026-10-31-v2
+      - key: AI_INPUT_USD_PER_MILLION
+        value: "0.10"
+      - key: AI_CACHED_INPUT_USD_PER_MILLION
+        value: "0.01"
+      - key: AI_OUTPUT_USD_PER_MILLION
+        value: "0.50"
+      # Render docs don't promise a fixed X-Forwarded-For hop count. Set this
+      # from the actual configured proxy chain; production validation requires it.
+      - key: PROXY_FIX_X_FOR
+        sync: false
+      - key: PROXY_FIX_X_PROTO
+        sync: false
+      - key: PROXY_FIX_X_HOST
+        value: "0"
+      - key: MAX_CONTENT_LENGTH
+        value: "262144"

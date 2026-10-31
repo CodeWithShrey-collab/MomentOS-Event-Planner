@@ -52,9 +52,9 @@ services:
           type: keyvalue
           property: connectionString
       - key: PROXY_FIX_X_FOR
-        value: "2"
+        sync: false
       - key: PROXY_FIX_X_PROTO
-        value: "1"
+        sync: false
       - key: PROXY_FIX_X_HOST
         value: "0"
       - key: MAX_CONTENT_LENGTH

@@ -9,6 +9,7 @@ from werkzeug.exceptions import HTTPException
 
 from flask import Flask, abort, g, jsonify, request, send_from_directory
 from pydantic import ValidationError
+from redis import Redis
 from sqlalchemy import event as sqlalchemy_event, text
 from sqlalchemy.engine import Engine
 from werkzeug.exceptions import NotFound
@@ -36,6 +37,27 @@ def create_app(overrides: dict[str, object] | None = None) -> Flask:
         RATELIMIT_HEADERS_ENABLED=True,
         JSON_SORT_KEYS=False,
     )
+    if settings.database_uri.startswith("postgresql+psycopg://"):
+        # Keep a small per-worker pool for the free Render instance and recover
+        # stale sockets after Neon autosuspends an idle compute.
+        app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+            "pool_pre_ping": True,
+            "pool_recycle": 300,
+            "pool_size": 2,
+            "max_overflow": 0,
+            "pool_timeout": 10,
+        }
+    if settings.is_production:
+        # Separate health client: Flask-Limiter still owns its own Redis pool.
+        # TLS verification and hostname checking are explicit for Upstash.
+        app.extensions["momentos_rate_limit_redis"] = Redis.from_url(
+            settings.rate_limit_storage_uri,
+            socket_connect_timeout=3,
+            socket_timeout=3,
+            ssl_cert_reqs="required",
+            ssl_check_hostname=True,
+            health_check_interval=30,
+        )
     if settings.proxy_fix_x_for or settings.proxy_fix_x_proto or settings.proxy_fix_x_host:
         # ProxyFix trusts only the configured number of rightmost forwarded
         # values. Set the counts to match the host's actual proxy chain.

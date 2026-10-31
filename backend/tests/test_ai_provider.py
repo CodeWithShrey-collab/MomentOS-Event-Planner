@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import json
+from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -25,8 +26,33 @@ from momentos.ai_provider import (  # noqa: E402
     AIProviderTimeout,
     AIRefused,
     OpenAIProvider,
+    PricingConfig,
+    _usage_record,
 )
 from momentos.ai_schemas import EventBrief, EventRequirements, EventType, ExtractionRequest  # noqa: E402
+
+
+def test_usage_estimate_applies_standard_and_cached_input_rates():
+    response = SimpleNamespace(
+        _request_id="req_price_test",
+        usage=SimpleNamespace(
+            input_tokens=100,
+            input_tokens_details=SimpleNamespace(cached_tokens=50),
+            output_tokens=100,
+            total_tokens=200,
+        ),
+    )
+    pricing = PricingConfig(
+        version="openai-gpt-6-luna-standard-2026-10-31-v2",
+        input_usd_per_million_tokens=Decimal("0.10"),
+        cached_input_usd_per_million_tokens=Decimal("0.01"),
+        output_usd_per_million_tokens=Decimal("0.50"),
+    )
+
+    usage = _usage_record("answer_event_question", "low", response, 12, pricing)
+
+    assert usage.estimated_cost_usd == Decimal("0.000056")
+    assert usage.pricing_version == pricing.version
 
 
 class FakeResponses:

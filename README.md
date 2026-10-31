@@ -125,15 +125,15 @@ $env:PLAYWRIGHT_BROWSERS_PATH = 'G:\DevData\playwright-browsers'
 
 The live-mock Playwright suite uses real React-to-Flask HTTP, sessions, CSRF, and an isolated SQLite database, with a valid mocked AI provider. It is not evidence of a live-browser OpenAI request. Previous verified counts and limits are in `docs/07_dom_verification.md`.
 
-## Production deployment
+## Deployment
 
-The recommended prepared target is Render: a same-origin Docker web service, persistent PostgreSQL, and shared Redis-compatible rate-limit storage. The provider costs money for an always-on production setup; the current low-tier estimate and free-tier limitations are in [`docs/08_deployment_guide.md`](docs/08_deployment_guide.md). No service has been created or deployed.
+Two configurations are prepared. [`render.yaml`](render.yaml) is the existing paid Render blueprint. [`render-free.yaml`](render-free.yaml) defines one free Render Docker web service backed by Neon PostgreSQL and Upstash Redis. Follow the separate [free deployment guide](docs/08_free_deployment_guide.md) and [checklist](docs/08_free_deployment_checklist.md); select `render-free.yaml` explicitly in Render because the default `render.yaml` declares paid resources. The app is not deployed. Free hosting has cold starts and quotas, and OpenAI usage is billed separately. A deployment remains blocked until Render's trusted proxy hop counts are verified; the Docker image and real Neon/Upstash connections have not yet been tested.
 
 ```sh
 docker build -t momentos:local .
 ```
 
-The Render Blueprint is [`render.yaml`](render.yaml). It requests `OPENAI_API_KEY`, `APP_BASE_URL`, and `TRUSTED_ORIGINS` through the provider's secret/configuration UI, generates `SECRET_KEY`, binds PostgreSQL and Redis by service references, applies Alembic migrations before deploy, and uses the Flask readiness endpoint. Confirm all costs and the forwarded-proxy chain before importing it.
+The paid Render Blueprint is [`render.yaml`](render.yaml). The separate free blueprint uses dashboard-supplied Neon, Upstash, OpenAI, origin, and proxy settings. Render does not document a fixed `ProxyFix` hop count; verify the actual proxy chain rather than guessing. Neither configuration has been deployed.
 
 ## Security notes
 

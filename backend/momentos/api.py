@@ -191,6 +191,7 @@ def _live_provider():
     pricing = PricingConfig(
         version=settings.ai_pricing_config_version,
         input_usd_per_million_tokens=Decimal(str(settings.ai_input_usd_per_million)),
+        cached_input_usd_per_million_tokens=Decimal(str(settings.ai_cached_input_usd_per_million)),
         output_usd_per_million_tokens=Decimal(str(settings.ai_output_usd_per_million)),
     )
     return OpenAIProvider(
@@ -532,9 +533,23 @@ def health_ready():
     except Exception:
         db.session.rollback()
         database_state = "unavailable"
+    rate_limit_state = "not_required"
+    if settings.is_production:
+        try:
+            current_app.extensions["momentos_rate_limit_redis"].ping()
+            rate_limit_state = "ready"
+        except Exception:
+            rate_limit_state = "unavailable"
     ai_state = "demo" if settings.ai_mode == "demo" else ("configured" if settings.openai_key else "not_configured")
-    ready = database_state == "ready" and (settings.ai_mode != "live" or bool(settings.openai_key))
-    response = _success({"status": "ready" if ready else "not_ready", "components": {"database": database_state, "ai": ai_state}})
+    ready = (
+        database_state == "ready"
+        and rate_limit_state in {"ready", "not_required"}
+        and (settings.ai_mode != "live" or bool(settings.openai_key))
+    )
+    response = _success({
+        "status": "ready" if ready else "not_ready",
+        "components": {"database": database_state, "rate_limit_store": rate_limit_state, "ai": ai_state},
+    })
     if not ready:
         response.status_code = 503
     return response

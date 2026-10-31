@@ -3,10 +3,11 @@ from __future__ import annotations
 from functools import cached_property
 from pathlib import Path
 from typing import Literal
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import make_url
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -22,6 +23,7 @@ class Settings(BaseSettings):
         case_sensitive=False,
         extra="ignore",
         validate_default=True,
+        hide_input_in_errors=True,
     )
 
     app_env: Literal["development", "testing", "production"] = "development"
@@ -38,10 +40,10 @@ class Settings(BaseSettings):
     openai_timeout_seconds: float = Field(default=25.0, ge=3.0, le=60.0)
     ai_daily_request_limit: int = Field(default=20, ge=1, le=1000)
     ai_per_minute_limit: int = Field(default=5, ge=1, le=60)
-    ai_input_usd_per_million: float = Field(default=0.05, ge=0)
-    ai_cached_input_usd_per_million: float = Field(default=0.005, ge=0)
-    ai_output_usd_per_million: float = Field(default=0.25, ge=0)
-    ai_pricing_config_version: str = "openai-gpt-6-luna-2026-10-22-v1"
+    ai_input_usd_per_million: float = Field(default=0.10, ge=0)
+    ai_cached_input_usd_per_million: float = Field(default=0.01, ge=0)
+    ai_output_usd_per_million: float = Field(default=0.50, ge=0)
+    ai_pricing_config_version: str = "openai-gpt-6-luna-standard-2026-10-31-v2"
 
     session_cookie_name: str = "momentos_session"
     session_cookie_secure: bool | None = None
@@ -52,8 +54,8 @@ class Settings(BaseSettings):
     trusted_origins: str = "http://127.0.0.1:5000,http://localhost:5000,http://127.0.0.1:5173,http://localhost:5173"
     rate_limit_storage_uri: str = "memory://"
     # Set these only for the exact reverse proxy chain in front of this app.
-    # Render's documented edge chain uses two X-Forwarded-For entries and one
-    # X-Forwarded-Proto entry; other hosts must set their own trusted counts.
+    # Render documents Cloudflare and load balancers but does not guarantee a
+    # fixed X-Forwarded-For hop count; deployment config leaves counts explicit.
     proxy_fix_x_for: int = Field(default=0, ge=0, le=3)
     proxy_fix_x_proto: int = Field(default=0, ge=0, le=2)
     proxy_fix_x_host: int = Field(default=0, ge=0, le=2)
@@ -83,12 +85,32 @@ class Settings(BaseSettings):
                 raise ValueError("Production requires SECRET_KEY with at least 32 characters")
             if not self.session_cookie_secure:
                 raise ValueError("Production requires SESSION_COOKIE_SECURE=true")
+            if self.session_cookie_samesite != "Lax":
+                raise ValueError("Production requires SESSION_COOKIE_SAMESITE=Lax")
             if self.ai_mode != "live" or not self.openai_key or not self.openai_key.strip():
                 raise ValueError("Production requires AI_MODE=live and an OPENAI_API_KEY")
+            if self.openai_reasoning_effort != "low":
+                raise ValueError("Production requires OPENAI_REASONING_EFFORT=low as the default")
             if not self.database_url or not self.database_uri.startswith("postgresql+psycopg://"):
                 raise ValueError("Production requires a PostgreSQL DATABASE_URL")
-            if not self.rate_limit_storage_uri.startswith(("redis://", "rediss://")):
-                raise ValueError("Production requires shared RATE_LIMIT_STORAGE_URI (for example Redis)")
+            redis_url = urlsplit(self.rate_limit_storage_uri)
+            try:
+                redis_port = redis_url.port
+            except ValueError:
+                redis_port = None
+            if (
+                redis_url.scheme != "rediss"
+                or not redis_url.hostname
+                or not redis_url.username
+                or not redis_url.password
+                or redis_port is None
+            ):
+                raise ValueError("Production requires a valid TLS Redis TCP URL in RATE_LIMIT_STORAGE_URI (rediss://)")
+            # Flask-Limiter passes this URL to redis-py. Explicit query options
+            # make both certificate-chain and hostname verification strict;
+            # rediss:// alone does not enable hostname checks in the installed
+            # redis-py client. Keep the endpoint and all unrelated query values.
+            self.rate_limit_storage_uri = self._require_redis_tls_verification(self.rate_limit_storage_uri)
             if not self.proxy_fix_x_for or not self.proxy_fix_x_proto:
                 raise ValueError("Production requires explicit trusted proxy counts for X-Forwarded-For and X-Forwarded-Proto")
 
@@ -99,6 +121,17 @@ class Settings(BaseSettings):
             if any(not self._is_https_origin(origin) for origin in origins):
                 raise ValueError("Production TRUSTED_ORIGINS must contain only HTTPS origins")
         return self
+
+    @staticmethod
+    def _require_redis_tls_verification(value: str) -> str:
+        parsed = urlsplit(value)
+        query = [
+            (key, item)
+            for key, item in parse_qsl(parsed.query, keep_blank_values=True)
+            if key.lower() not in {"ssl_cert_reqs", "ssl_check_hostname"}
+        ]
+        query.extend((("ssl_cert_reqs", "required"), ("ssl_check_hostname", "true")))
+        return urlunsplit(parsed._replace(query=urlencode(query)))
 
     @staticmethod
     def _is_https_origin(value: str) -> bool:
@@ -131,6 +164,21 @@ class Settings(BaseSettings):
     @property
     def database_uri(self) -> str:
         if self.database_url:
+            if self.is_production:
+                try:
+                    url = make_url(self.database_url)
+                    if url.drivername in {"postgres", "postgresql"}:
+                        url = url.set(drivername="postgresql+psycopg")
+                    if url.drivername != "postgresql+psycopg" or not url.host or not url.database:
+                        raise ValueError("invalid PostgreSQL address")
+                    query = dict(url.query)
+                    query["sslmode"] = "verify-full"
+                    query.setdefault("connect_timeout", "10")
+                    url = url.set(query=query)
+                    return url.render_as_string(hide_password=False)
+                except Exception:
+                    raise ValueError("Production requires a valid PostgreSQL DATABASE_URL using psycopg") from None
+
             value = self.database_url
             if value.startswith("postgres://"):
                 return value.replace("postgres://", "postgresql+psycopg://", 1)

@@ -2,8 +2,28 @@
 
 from __future__ import annotations
 
+import time
+
 import click
 from flask import current_app
+from sqlalchemy import text
+
+from .extensions import db
+
+
+def _verify_production_dependencies(database_check, redis_check, *, sleep=time.sleep) -> str | None:
+    """Run bounded, idempotent connectivity probes without returning details."""
+    last_error = None
+    for attempt in range(3):
+        try:
+            database_check()
+            redis_check()
+            return None
+        except Exception as exc:
+            last_error = exc
+            if attempt < 2:
+                sleep(2)
+    return type(last_error).__name__ if last_error else "ConnectionError"
 
 from .ai_provider import (
     AIProviderError,
@@ -17,6 +37,35 @@ from .ai_provider import (
 
 
 def register_commands(app) -> None:
+    @app.cli.command("production-preflight")
+    def production_preflight() -> None:
+        """Verify the configured production database and shared Redis store."""
+        settings = current_app.extensions["momentos_settings"]
+        if not settings.is_production:
+            click.echo("Production preflight requires APP_ENV=production.", err=True)
+            raise click.exceptions.Exit(2)
+        redis_client = current_app.extensions["momentos_rate_limit_redis"]
+
+        def database_check():
+            try:
+                db.session.execute(text("SELECT 1"))
+            except Exception:
+                db.session.rollback()
+                raise
+
+        def redis_check():
+            redis_client.ping()
+
+        error_type = _verify_production_dependencies(
+            database_check,
+            redis_check,
+        )
+        if error_type:
+            # Deliberately omit exception text: drivers may include endpoint data.
+            click.echo(f"Production dependency preflight failed ({error_type}).", err=True)
+            raise click.exceptions.Exit(1)
+        click.echo("Production dependency preflight passed (database and TLS Redis reachable).")
+
     @app.cli.command("openai-smoke")
     def openai_smoke() -> None:
         """Verify GPT-6 Luna access with one low-effort, 128-token request."""

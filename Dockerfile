@@ -8,6 +8,9 @@ RUN npm run build
 
 # Keep the runtime image limited to Python runtime dependencies and app code.
 FROM python:3.12-slim AS runtime
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \

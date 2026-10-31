@@ -55,7 +55,7 @@ Configure these through the host's secret/environment manager. Do not copy a loc
 | `OPENAI_REASONING_EFFORT` | `low` by default; operation-specific medium effort remains bounded. |
 | `OPENAI_MAX_OUTPUT_TOKENS` | `3000` configured in the Blueprint; app bounds the accepted range. |
 | `AI_DAILY_REQUEST_LIMIT`, `AI_PER_MINUTE_LIMIT` | `20` and `5` in the prepared Blueprint; adjust only after reviewing expected spend. |
-| `PROXY_FIX_X_FOR`, `PROXY_FIX_X_PROTO`, `PROXY_FIX_X_HOST` | `2`, `1`, `0` for the documented Render edge chain. These counts must be checked against the actual deployed forwarded headers before public launch. Other providers need their own exact values. |
+| `PROXY_FIX_X_FOR`, `PROXY_FIX_X_PROTO`, `PROXY_FIX_X_HOST` | Set after confirming the deployed proxy chain. Render documents Cloudflare and Render load balancers but does not promise a fixed forwarded-header hop count. Do not use a guessed count. The paid Blueprint leaves X-For/X-Proto unset until configured. |
 | `MAX_CONTENT_LENGTH` | `262144` bytes. |
 
 Production settings now fail closed if the app uses demo AI, lacks a key, selects SQLite or memory rate-limit storage, lacks HTTPS origins/secure cookies, or does not declare trusted forwarded-header counts. Flask debug is explicitly false. Redis support is included through the `Flask-Limiter[redis]` dependency.
