@@ -30,9 +30,13 @@ export function LandingPage() {
         scrollTrigger: { trigger: image, start: 'top 86%', end: 'bottom 15%', scrub: true },
       });
     });
-    gsap.fromTo('.desire-copy span', { opacity: 0.2 }, {
+    gsap.fromTo('.desire-copy span', { opacity: 0.65 }, {
       opacity: 1, stagger: 0.08, ease: 'none',
       scrollTrigger: { trigger: '.desire-copy', start: 'top 72%', end: 'bottom 40%', scrub: true },
+    });
+    gsap.fromTo('.event-accordion-item', { y: 54, scale: 0.975, opacity: 0.78, transformOrigin: 'center bottom' }, {
+      y: 0, scale: 1, opacity: 1, stagger: 0.12, ease: 'none',
+      scrollTrigger: { trigger: '.event-accordion', start: 'top 82%', end: 'top 38%', scrub: 0.45 },
     });
   }, { scope: pageRef });
 
@@ -82,8 +86,8 @@ export function LandingPage() {
 
         <section className="event-types-section section-space">
           <div className="section-intro event-type-intro"><div><p className="eyebrow">Whatever brings you together</p><h2>Made for your kind<br />of <em>moment.</em></h2></div><p>Start with what you know. Keep the rest open until you are ready to decide.</p></div>
-          <div className="event-accordion">{gallery.map((item, index) => <Link key={item.type} to={`/events/new?type=${item.type}`} className={`event-accordion-item accordion-${item.type}`} style={{ backgroundImage: `linear-gradient(180deg, transparent 20%, rgba(31, 27, 29, .78) 100%), url(${item.src})` }}>
-            <span className="accordion-number">0{index + 1}</span><div className="accordion-copy"><span>{item.guests}</span><h3>{TYPE_COPY[item.type].label}</h3><p>{TYPE_COPY[item.type].description}</p><span className="accordion-action">Start this plan <ChevronRight size={15} /></span></div><span className="accordion-arrow"><ArrowUpRight size={19} /></span>
+          <div className="event-accordion">{gallery.map((item) => <Link key={item.type} to={`/events/new?type=${item.type}`} className={`event-accordion-item accordion-${item.type}`} style={{ backgroundImage: `linear-gradient(180deg, transparent 20%, rgba(18, 55, 67, .82) 100%), url(${item.src})` }}>
+            <div className="accordion-copy"><span>{item.guests}</span><h3>{TYPE_COPY[item.type].label}</h3><p>{TYPE_COPY[item.type].description}</p><span className="accordion-action">Start this plan <ChevronRight size={15} /></span></div><span className="accordion-arrow"><ArrowUpRight size={19} /></span>
           </Link>)}</div>
           <div className="inline-image-thought"><p>“The most important detail is <span className="inline-image-chip" role="img" aria-label="A shared table at a celebration" style={{ backgroundImage: `url(${gallery[0]!.src})` }} /> the people who make it feel like yours.”</p><span>Made for every reason to gather.</span></div>
         </section>
