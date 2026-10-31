@@ -2,28 +2,12 @@
 
 from __future__ import annotations
 
-import time
-
 import click
 from flask import current_app
 from sqlalchemy import text
 
 from .extensions import db
-
-
-def _verify_production_dependencies(database_check, redis_check, *, sleep=time.sleep) -> str | None:
-    """Run bounded, idempotent connectivity probes without returning details."""
-    last_error = None
-    for attempt in range(3):
-        try:
-            database_check()
-            redis_check()
-            return None
-        except Exception as exc:
-            last_error = exc
-            if attempt < 2:
-                sleep(2)
-    return type(last_error).__name__ if last_error else "ConnectionError"
+from .preflight import PreflightFailure, verify_dependency
 
 from .ai_provider import (
     AIProviderError,
@@ -56,13 +40,13 @@ def register_commands(app) -> None:
         def redis_check():
             redis_client.ping()
 
-        error_type = _verify_production_dependencies(
-            database_check,
-            redis_check,
-        )
-        if error_type:
-            # Deliberately omit exception text: drivers may include endpoint data.
-            click.echo(f"Production dependency preflight failed ({error_type}).", err=True)
+        failure: PreflightFailure | None = verify_dependency(database_check, "DATABASE")
+        if failure is None:
+            failure = verify_dependency(redis_check, "REDIS")
+        if failure:
+            # The diagnostic string contains only an allowlisted category and,
+            # for PostgreSQL server errors, a validated five-character SQLSTATE.
+            click.echo(failure.diagnostic, err=True)
             raise click.exceptions.Exit(1)
         click.echo("Production dependency preflight passed (database and TLS Redis reachable).")
 

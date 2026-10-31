@@ -41,7 +41,7 @@ def production_values(**updates):
         "app_env": "production",
         "app_base_url": "https://momentos.example",
         "secret_key": "a-safe-test-secret-that-is-not-a-real-credential",
-        "database_url": "postgresql://default:placeholder@ep-neon-pooler.example/neondb?sslmode=require&channel_binding=require",
+        "database_url": "postgresql://default:placeholder@ep-neon-direct.example/neondb?sslmode=require&channel_binding=require",
         "ai_mode": "live",
         "openai_api_key": "test-only-not-a-provider-key",
         "session_cookie_secure": True,
@@ -64,6 +64,7 @@ def test_production_settings_require_live_ai_postgres_https_redis_and_safe_rende
     postgres_url = make_url(settings.database_uri)
     assert postgres_url.password == "placeholder"
     assert postgres_url.query["sslmode"] == "verify-full"
+    assert postgres_url.query["sslrootcert"] == "/etc/ssl/certs/ca-certificates.crt"
     assert postgres_url.query["channel_binding"] == "require"
     assert postgres_url.query["connect_timeout"] == "10"
     assert settings.cookie_secure is True
@@ -79,6 +80,7 @@ def test_production_settings_require_live_ai_postgres_https_redis_and_safe_rende
         ({"ai_mode": "demo"}, "AI_MODE=live"),
         ({"openai_api_key": None}, "OPENAI_API_KEY"),
         ({"database_url": "sqlite:///momentos.sqlite3"}, "PostgreSQL DATABASE_URL"),
+        ({"database_url": "postgresql://planner:placeholder@db.example/"}, "valid PostgreSQL DATABASE_URL"),
         ({"app_base_url": "http://momentos.example"}, "HTTPS origin"),
         ({"trusted_origins": "https://momentos.example,http://localhost:5000"}, "only HTTPS origins"),
         ({"rate_limit_storage_uri": "memory://"}, "RATE_LIMIT_STORAGE_URI"),
@@ -100,18 +102,21 @@ def test_production_database_uri_preserves_encoded_credentials_and_neon_options(
         _env_file=None,
         **production_values(
             database_url=(
-                "postgresql://planner%40example:p%2F%40%3Fword@ep-neon-pooler.example/neondb"
-                "?sslmode=require&channel_binding=require&options=-c%20statement_timeout%3D5000"
+                "postgresql://planner%40example:p%2F%40%3Fword@ep-neon-direct.example/neondb"
+                "?sslmode=require&sslrootcert=%2Funtrusted%2Froot.crt&channel_binding=require&options=-c%20statement_timeout%3D5000"
             )
         ),
     )
     from sqlalchemy.engine import make_url
 
     url = make_url(settings.database_uri)
+    assert url.host == "ep-neon-direct.example"
+    assert url.database == "neondb"
     assert url.drivername == "postgresql+psycopg"
     assert url.username == "planner@example"
     assert url.password == "p/@?word"
     assert url.query["sslmode"] == "verify-full"
+    assert url.query["sslrootcert"] == "/etc/ssl/certs/ca-certificates.crt"
     assert url.query["channel_binding"] == "require"
     assert url.query["options"] == "-c statement_timeout=5000"
 
@@ -175,30 +180,28 @@ def test_production_settings_errors_do_not_echo_database_credentials():
 
 
 def test_startup_dependency_probe_retries_only_idempotent_probes_and_sanitizes_errors():
-    from momentos.cli import _verify_production_dependencies
+    from momentos.preflight import verify_dependency
 
-    calls = {"db": 0, "redis": 0, "sleep": 0}
+    calls = {"check": 0, "sleep": 0}
 
-    def database_check():
-        calls["db"] += 1
-
-    def redis_check():
-        calls["redis"] += 1
-        if calls["redis"] < 3:
+    def check():
+        calls["check"] += 1
+        if calls["check"] < 3:
             raise ConnectionError("private endpoint and token must not escape")
 
     def sleep(_seconds):
         calls["sleep"] += 1
 
-    assert _verify_production_dependencies(database_check, redis_check, sleep=sleep) is None
-    assert calls == {"db": 3, "redis": 3, "sleep": 2}
+    assert verify_dependency(check, "REDIS", sleep=sleep) is None
+    assert calls == {"check": 3, "sleep": 2}
 
     def always_fails():
         raise ConnectionError("private endpoint and token must not escape")
 
-    error_type = _verify_production_dependencies(always_fails, lambda: None, sleep=lambda _seconds: None)
-    assert error_type == "ConnectionError"
-    assert "private endpoint" not in error_type
+    failure = verify_dependency(always_fails, "DATABASE", sleep=lambda _seconds: None)
+    assert failure is not None
+    assert failure.diagnostic == "PREFLIGHT_DATABASE_CONNECTION_FAILED"
+    assert "private endpoint" not in failure.diagnostic
 
 
 def test_production_preflight_cli_uses_database_and_shared_store_probes():
@@ -226,6 +229,90 @@ def test_production_preflight_cli_uses_database_and_shared_store_probes():
 
     assert result.exit_code == 0
     assert "preflight passed" in result.output
+    with app.app_context():
+        db.session.remove()
+        db.engine.dispose()
+
+
+def test_production_preflight_cli_reports_database_category_and_stops_before_redis(monkeypatch):
+    from types import SimpleNamespace
+
+    from sqlalchemy.exc import OperationalError
+
+    from momentos import create_app
+    from momentos.extensions import db
+
+    app = create_app({
+        "app_env": "testing",
+        "database_url": "sqlite:///:memory:",
+        "secret_key": "preflight-test-secret-with-more-than-thirty-two-characters",
+        "ai_mode": "demo",
+        "openai_api_key": None,
+        "app_base_url": "http://localhost",
+        "trusted_origins": "http://localhost",
+        "session_cookie_secure": False,
+        "rate_limit_storage_uri": "memory://",
+    })
+    calls = {"database": 0, "redis": 0}
+
+    class DriverError(Exception):
+        sqlstate = None
+
+    driver_error = DriverError("could not translate host name 'private-host.invalid'")
+    settings = Settings(_env_file=None, **production_values())
+    app.extensions["momentos_settings"] = settings
+
+    def unavailable_database(*_args, **_kwargs):
+        calls["database"] += 1
+        raise OperationalError("SELECT 1", {}, driver_error)
+
+    def redis_ping():
+        calls["redis"] += 1
+        return True
+
+    monkeypatch.setattr(db.session, "execute", unavailable_database)
+    app.extensions["momentos_rate_limit_redis"] = SimpleNamespace(ping=redis_ping)
+    result = app.test_cli_runner().invoke(args=["production-preflight"])
+
+    assert result.exit_code == 1
+    assert "PREFLIGHT_DATABASE_DNS_FAILED" in result.output
+    assert "private-host.invalid" not in result.output
+    assert "OperationalError" not in result.output
+    assert calls == {"database": 3, "redis": 0}
+    with app.app_context():
+        db.session.remove()
+        db.engine.dispose()
+
+
+def test_production_preflight_cli_reports_redis_failure_without_connection_details():
+    from types import SimpleNamespace
+
+    from momentos import create_app
+    from momentos.extensions import db
+
+    app = create_app({
+        "app_env": "testing",
+        "database_url": "sqlite:///:memory:",
+        "secret_key": "preflight-test-secret-with-more-than-thirty-two-characters",
+        "ai_mode": "demo",
+        "openai_api_key": None,
+        "app_base_url": "http://localhost",
+        "trusted_origins": "http://localhost",
+        "session_cookie_secure": False,
+        "rate_limit_storage_uri": "memory://",
+    })
+    app.extensions["momentos_settings"] = Settings(_env_file=None, **production_values())
+
+    def unavailable_redis():
+        raise TimeoutError("timed out at private-cache.example with private-token")
+
+    app.extensions["momentos_rate_limit_redis"] = SimpleNamespace(ping=unavailable_redis)
+    result = app.test_cli_runner().invoke(args=["production-preflight"])
+
+    assert result.exit_code == 1
+    assert "PREFLIGHT_REDIS_TIMEOUT" in result.output
+    assert "private-cache.example" not in result.output
+    assert "private-token" not in result.output
     with app.app_context():
         db.session.remove()
         db.engine.dispose()

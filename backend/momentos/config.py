@@ -12,6 +12,11 @@ from sqlalchemy.engine import make_url
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 BACKEND_DIR = Path(__file__).resolve().parents[1]
+# The production Docker image installs Debian's current CA bundle. libpq's
+# verify-full mode otherwise defaults to ~/.postgresql/root.crt, which is not
+# present in the Render container. Point libpq at the installed system bundle
+# while retaining certificate-chain and hostname verification.
+POSTGRES_SYSTEM_CA_BUNDLE = "/etc/ssl/certs/ca-certificates.crt"
 
 
 class Settings(BaseSettings):
@@ -176,6 +181,7 @@ class Settings(BaseSettings):
                         raise ValueError("invalid PostgreSQL address")
                     query = dict(url.query)
                     query["sslmode"] = "verify-full"
+                    query["sslrootcert"] = POSTGRES_SYSTEM_CA_BUNDLE
                     query.setdefault("connect_timeout", "10")
                     url = url.set(query=query)
                     return url.render_as_string(hide_password=False)

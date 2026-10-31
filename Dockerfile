@@ -10,6 +10,7 @@ RUN npm run build
 FROM python:3.12-slim AS runtime
 RUN apt-get update \
     && apt-get install --no-install-recommends -y ca-certificates \
+    && test -s /etc/ssl/certs/ca-certificates.crt \
     && rm -rf /var/lib/apt/lists/*
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

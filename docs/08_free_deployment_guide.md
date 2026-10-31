@@ -1,6 +1,6 @@
 # MomentOS — Free-Tier Deployment Guide
 
-**Status:** preparation only. No Neon or Upstash resources have been created and MomentOS is not deployed. The existing paid-service design in [`render.yaml`](../render.yaml) remains separate. This guide uses the separate free-only [`render-free.yaml`](../render-free.yaml).
+**Status (2026-10-31):** the user-created Neon and Upstash databases and one Render Free web service already exist. The latest deployment is unhealthy; the Docker image builds, but startup fails at the PostgreSQL connectivity preflight. Redis, migrations, and Flask readiness have not yet been verified in Render. No additional resources were created. The existing paid-service design in [`render.yaml`](../render.yaml) remains separate. This guide uses the free-only [`render-free.yaml`](../render-free.yaml).
 
 The target is one Render Free Docker web service, Neon Free PostgreSQL, and Upstash Free Redis. This is a zero-fixed-cost preview configuration inside provider allowances, not a production SLA or a guarantee of zero usage charges. OpenAI remains usage-billed. Free-tier limits and terms can change; verify them in each dashboard before creating resources.
 
@@ -41,7 +41,7 @@ The existing [`Dockerfile`](../Dockerfile) builds React assets and runs Flask/Gu
 4. Open **Connect**, select the branch, database, and role, then turn **Connection pooling off** and copy the direct connection string. Neon recommends direct connections for schema migrations because transaction poolers can be unsuitable for migration tools.
 5. Keep the copied string private. Do not put it in Git, chat, screenshots, or `.env.example`.
 
-The app accepts standard Neon `postgresql://`/`postgres://` URLs and `postgresql+psycopg://` URLs. It preserves encoded username/password and existing query options (such as `channel_binding=require`), selects the psycopg 3 driver, enforces `sslmode=verify-full`, and adds a bounded connect timeout only if one is absent. The runtime image includes system CA certificates. Production never accepts SQLite.
+The app accepts standard Neon `postgresql://`/`postgres://` URLs and `postgresql+psycopg://` URLs. It preserves encoded username/password and existing query options (such as `channel_binding=require`), selects the psycopg 3 driver, enforces `sslmode=verify-full`, and points libpq at the Debian CA bundle `/etc/ssl/certs/ca-certificates.crt`. This is necessary because libpq otherwise looks for `~/.postgresql/root.crt`; installing OS CA certificates alone does not select them for PostgreSQL verification. The Docker build now fails if the expected bundle is absent. The connection timeout is bounded at ten seconds unless supplied by the URL. Production never accepts SQLite. The current Render log only identified a PostgreSQL `OperationalError`; TLS trust is a confirmed configuration gap and likely cause, but must be confirmed by the new sanitized diagnostics after an authorized deployment.
 
 Neon’s Free pricing currently lists 100 CU-hours and 1 GB per project. A sleeping Render service and Neon autosuspend may both add wake-up delay. The SQLAlchemy pool is bounded to two connections per worker, has no overflow, checks stale sockets before reuse, recycles connections, and uses a short pool timeout.
 
@@ -119,7 +119,7 @@ The usage estimator applies the standard short-context input/output rates and di
 The free startup script runs these steps in order and stops on the first failure:
 
 1. Import the Flask app; Pydantic validates production settings without printing secret values.
-2. Run bounded, read-only `SELECT 1` and TLS Redis `PING` probes (three attempts, two-second waits). Errors report only a sanitized exception class.
+2. Run bounded, read-only PostgreSQL `SELECT 1` probes first, then TLS Redis `PING` probes (up to three attempts per dependency, two-second waits). Failures emit allowlisted categories such as `PREFLIGHT_DATABASE_TLS_FAILED` or `PREFLIGHT_REDIS_TIMEOUT`; PostgreSQL SQLSTATE may be included after validation. Driver text, URLs, usernames, hosts, and credentials are never emitted.
 3. Run `flask db upgrade` using the checked-in Alembic migrations.
 4. Start one Gunicorn worker with two threads and bounded timeouts.
 
@@ -159,7 +159,10 @@ No live API request, cloud resource, remote database/Redis connection, migration
 - [Render deploy commands and pre-deploy restrictions](https://render.com/docs/deploys)
 - [Neon secure connections and `verify-full`](https://neon.com/docs/connect/connect-securely)
 - [Neon connection pooling and migration guidance](https://neon.com/docs/connect/connection-pooling)
+- [PostgreSQL libpq connection parameters and system CA roots](https://www.postgresql.org/docs/current/libpq-connect.html)
+- [Psycopg 3 binary installation and bundled libpq](https://www.psycopg.org/psycopg3/docs/basic/install.html)
 - [Neon pricing and current Free limits](https://neon.com/pricing)
 - [Upstash TCP/TLS connection setup for Render](https://upstash.com/docs/redis/quickstarts/render)
+- [redis-py TLS connection parameters](https://redis.readthedocs.io/en/stable/connections.html)
 - [Upstash Redis pricing and Free limits](https://upstash.com/pricing/redis)
 - [OpenAI API pricing](https://developers.openai.com/api/docs/pricing)
