@@ -120,7 +120,7 @@ export function EventArchitect() {
           <section className="review-ideas"><span className="bento-kicker">A few personal touches</span><div>{draft.ideas.map((idea) => <p key={idea}><Sparkles size={15} />{idea}</p>)}</div></section>
         </div> : null}
       </main>
-      <footer className="architect-footer"><span>momentOS</span><span>Make room for the moment.</span><a href="mailto:hello@momentos.app">Need a hand?</a></footer>
+      <footer className="architect-footer"><span>momentOS</span><span>Make room for the moment.</span></footer>
       <ConfirmationDialog open={confirmOpen} title="Save this as your plan?" confirmLabel="Confirm and save" onCancel={() => setConfirmOpen(false)} onConfirm={handleConfirm} busy={step === 'saving'}>
         <p>{demoApi.mode === 'offline_demo' ? 'Your editable plan will be saved only in this browser demo.' : 'Your editable plan will be saved to your event workspace.'} You can change it later.</p><p className="dialog-note"><Sparkles size={15} /> {draft?.aiStatus === 'live' ? 'GPT-6 Luna prepared this blueprint. It becomes your saved plan only after you confirm.' : draft?.aiStatus === 'mock' ? 'This is a structured mock response for testing; no live OpenAI request was made.' : 'This blueprint is an offline demo result; no live OpenAI response was generated.'}</p>
       </ConfirmationDialog>
