@@ -1,0 +1,13 @@
+Flask==3.0.0
+Flask-Limiter[redis]==3.5.0
+Flask-Migrate==4.1.0
+Flask-SQLAlchemy==3.1.1
+SQLAlchemy==2.0.45
+alembic==1.20.0
+gunicorn==21.2.0
+openai==3.36.0
+psycopg[binary]==3.3.6
+pydantic==2.13.4
+pydantic-settings==2.15.0
+python-dotenv==1.2.3
+pytest==8.4.2

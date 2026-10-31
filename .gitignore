@@ -1,0 +1,53 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+# Private working handoff; publish only the curated docs and README.
+context.md
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Dependencies and generated output
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+coverage/
+**/coverage/
+test-results/
+**/test-results/
+playwright-report/
+**/playwright-report/
+test-artifacts/
+**/test-artifacts/
+*.tsbuildinfo
+.vite/
+**/.vite/
+.coverage
+.coverage.*
+*.log
+
+# Python environments and generated files (Stage 05+)
+.venv/
+venv/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Local databases and editor/OS files
+backend/instance/
+*.sqlite
+*.sqlite3
+*.db
+*.sql
+*.dump
+*.pgdump
+*.backup
+*.bak
+.DS_Store
+Thumbs.db
