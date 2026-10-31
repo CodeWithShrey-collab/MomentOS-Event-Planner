@@ -53,9 +53,10 @@ class Settings(BaseSettings):
     session_rotation_window_days: int = Field(default=7, ge=1, le=30)
     trusted_origins: str = "http://127.0.0.1:5000,http://localhost:5000,http://127.0.0.1:5173,http://localhost:5173"
     rate_limit_storage_uri: str = "memory://"
-    # Set these only for the exact reverse proxy chain in front of this app.
-    # Render documents Cloudflare and load balancers but does not guarantee a
-    # fixed X-Forwarded-For hop count; deployment config leaves counts explicit.
+    rate_limit_client_ip_source: Literal["socket", "render_cf_connecting_ip"] = "socket"
+    # Forwarded header trust stays disabled for Render. Its public ingress
+    # rewrites CF-Connecting-IP, while the public docs do not guarantee fixed
+    # X-Forwarded-* hop counts for Werkzeug ProxyFix.
     proxy_fix_x_for: int = Field(default=0, ge=0, le=3)
     proxy_fix_x_proto: int = Field(default=0, ge=0, le=2)
     proxy_fix_x_host: int = Field(default=0, ge=0, le=2)
@@ -111,8 +112,10 @@ class Settings(BaseSettings):
             # rediss:// alone does not enable hostname checks in the installed
             # redis-py client. Keep the endpoint and all unrelated query values.
             self.rate_limit_storage_uri = self._require_redis_tls_verification(self.rate_limit_storage_uri)
-            if not self.proxy_fix_x_for or not self.proxy_fix_x_proto:
-                raise ValueError("Production requires explicit trusted proxy counts for X-Forwarded-For and X-Forwarded-Proto")
+            if self.rate_limit_client_ip_source != "render_cf_connecting_ip":
+                raise ValueError("Production requires RATE_LIMIT_CLIENT_IP_SOURCE=render_cf_connecting_ip")
+            if any((self.proxy_fix_x_for, self.proxy_fix_x_proto, self.proxy_fix_x_host)):
+                raise ValueError("Production must not trust X-Forwarded-* headers; set all PROXY_FIX_X_* values to 0")
 
             app_origin = self.app_base_url.rstrip("/")
             if not self._is_https_origin(app_origin):

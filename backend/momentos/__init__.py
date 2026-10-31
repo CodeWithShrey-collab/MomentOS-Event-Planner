@@ -59,8 +59,9 @@ def create_app(overrides: dict[str, object] | None = None) -> Flask:
             health_check_interval=30,
         )
     if settings.proxy_fix_x_for or settings.proxy_fix_x_proto or settings.proxy_fix_x_host:
-        # ProxyFix trusts only the configured number of rightmost forwarded
-        # values. Set the counts to match the host's actual proxy chain.
+        # Non-production deployments may opt in only after documenting their
+        # own exact proxy chain. Production Render settings reject nonzero
+        # counts and use a validated Cloudflare client-IP header for limits.
         app.wsgi_app = ProxyFix(
             app.wsgi_app,
             x_for=settings.proxy_fix_x_for,

@@ -127,19 +127,19 @@ The live-mock Playwright suite uses real React-to-Flask HTTP, sessions, CSRF, an
 
 ## Deployment
 
-Two configurations are prepared. [`render.yaml`](render.yaml) is the existing paid Render blueprint. [`render-free.yaml`](render-free.yaml) defines one free Render Docker web service backed by Neon PostgreSQL and Upstash Redis. Follow the separate [free deployment guide](docs/08_free_deployment_guide.md) and [checklist](docs/08_free_deployment_checklist.md); select `render-free.yaml` explicitly in Render because the default `render.yaml` declares paid resources. The app is not deployed. Free hosting has cold starts and quotas, and OpenAI usage is billed separately. The Docker image and local container startup have been verified; real Neon/Upstash connections and Render's trusted proxy hop counts remain unverified, so deployment is still blocked.
+Two configurations are prepared. [`render.yaml`](render.yaml) is the existing paid Render blueprint. [`render-free.yaml`](render-free.yaml) defines one free Render Docker web service backed by Neon PostgreSQL and Upstash Redis. Follow the separate [free deployment guide](docs/08_free_deployment_guide.md) and [checklist](docs/08_free_deployment_checklist.md); select `render-free.yaml` explicitly in Render because the default `render.yaml` declares paid resources. The app is not deployed. Free hosting has cold starts and quotas, and OpenAI usage is billed separately. The Docker image and local container startup have been verified; real Neon/Upstash connections and deployed TLS/cookie behavior remain unverified. Render proxy counts are explicitly zero; public-service rate limiting uses the documented Cloudflare client-IP header.
 
 ```sh
 docker build -t momentos:local .
 ```
 
-The paid Render Blueprint is [`render.yaml`](render.yaml). The separate free blueprint uses dashboard-supplied Neon, Upstash, OpenAI, origin, and proxy settings. Render does not document a fixed `ProxyFix` hop count; verify the actual proxy chain rather than guessing. Neither configuration has been deployed.
+The paid Render Blueprint is [`render.yaml`](render.yaml). The separate free blueprint uses dashboard-supplied Neon, Upstash, OpenAI, and origin settings. Both set `PROXY_FIX_X_FOR=0`, `PROXY_FIX_X_PROTO=0`, and `PROXY_FIX_X_HOST=0`; Flask-Limiter uses a validated Cloudflare-overwritten `CF-Connecting-IP` only on the public Render ingress. Neither configuration has been deployed.
 
 ## Security notes
 
 - Never commit `.env`, database credentials, or private keys. `.env.example` contains safe placeholders only.
 - Keep OpenAI credentials in a server-side secret manager. No key is passed to Vite or included in the frontend bundle.
-- Production startup rejects demo AI, missing credentials, SQLite, insecure origins/cookies, in-memory rate limits, and unspecified proxy trust counts.
+- Production startup rejects demo AI, missing credentials, SQLite, insecure origins/cookies, in-memory rate limits, a wrong Render rate-limit identity source, and nonzero forwarded-header trust.
 - Cookie-backed sessions are isolated by server-side ownership checks; state changes require CSRF and trusted-origin validation.
 - AI context and outputs are bounded and validated. No model can write to the database directly.
 
@@ -147,7 +147,7 @@ The paid Render Blueprint is [`render.yaml`](render.yaml). The separate free blu
 
 - The application is not yet deployed, so there is no public app URL. The public source repository is available at [github.com/CodeWithShrey-collab/MomentOS-Event-Planner](https://github.com/CodeWithShrey-collab/MomentOS-Event-Planner).
 - PostgreSQL has not been run through the app's migrations/persistence tests. A local PostgreSQL Windows service is present, but its data was not assumed disposable; the Docker daemon was unavailable for an isolated container.
-- Real production TLS/reverse-proxy behavior, shared rate-limit operation, and restart persistence remain unverified.
+- Real production TLS/cookie behavior, shared rate-limit operation, and restart persistence remain unverified.
 - The browser suite mocks AI provider responses. Stage 06 verified a real GPT-6 Luna blueprint, save, and reload, but a full live-browser plan-to-Copilot flow has not been run.
 - Demo video, LinkedIn announcement, and competition submission are drafts only; they have not been published or submitted.
 

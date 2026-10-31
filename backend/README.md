@@ -57,13 +57,14 @@ Production configuration is validated at startup and requires:
 - A generated, stable `SECRET_KEY` with at least 32 characters and `SESSION_COOKIE_SECURE=true`.
 - `AI_MODE=live`, an `OPENAI_API_KEY` stored in the platform secret manager, and the locked `OPENAI_MODEL=gpt-6-luna`.
 - A persistent PostgreSQL `DATABASE_URL` using the `psycopg` driver and shared Redis-compatible `RATE_LIMIT_STORAGE_URI`.
-- `PROXY_FIX_X_FOR` and `PROXY_FIX_X_PROTO` set to the exact trusted proxy counts documented by the selected host. Never use a forwarded-header count copied from another provider without verifying the chain.
+- `RATE_LIMIT_CLIENT_IP_SOURCE=render_cf_connecting_ip` only for a public Render web service using Cloudflare ingress. The app validates the single header IP and falls back to the socket peer if absent or malformed.
+- `PROXY_FIX_X_FOR=0`, `PROXY_FIX_X_PROTO=0`, and `PROXY_FIX_X_HOST=0`. Production rejects nonzero trust. Render does not publish fixed XFF/XFP hop counts; the app does not infer scheme/host from forwarded headers.
 
 Apply migrations before the new app process receives traffic: `python -m flask --app backend.wsgi:app db upgrade`. The checked-in Render Blueprint runs that command as a paid pre-deploy step. `GET /api/v1/health/live` checks process liveness; `/api/v1/health/ready` verifies database schema readiness and reports whether live AI credentials are configured.
 
 `Dockerfile` builds Vite assets and the Flask runtime into one image. The Render deployment definition is in the repository-root `render.yaml`; it describes a single-origin Flask app, persistent PostgreSQL, and Redis-compatible shared rate-limit storage. It does not provision services unless an authorized user imports the Blueprint. Read `docs/08_deployment_guide.md` before provisioning; the current low-tier estimate is paid and must be checked against the live provider dashboard.
 
-No public service has been provisioned. Production PostgreSQL, TLS/proxy behavior, and live browser behavior remain to be verified after a separately authorized deployment.
+No public service has been provisioned. Production PostgreSQL, deployed TLS/cookie behavior, and live browser behavior remain to be verified after a separately authorized deployment. Render proxy counts are zero by design; see the free deployment guide for the documented public-ingress IP source and trust boundary.
 
 ## API and mutation rules
 

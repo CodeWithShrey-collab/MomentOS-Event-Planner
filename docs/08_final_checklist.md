@@ -8,7 +8,7 @@
 - [x] Root README with product, architecture, local setup, test commands, security notes, screenshots, and limitations.
 - [x] Docker multi-stage build for a single-origin React/Flask app, Gunicorn runtime, SPA assets, and database migration command.
 - [x] Render Blueprint with HTTPS-ready origin configuration, generated `SECRET_KEY`, live GPT-6 Luna mode, secret prompt for `OPENAI_API_KEY`, PostgreSQL, shared Redis-compatible rate limits, readiness check, and disabled auto-deploy.
-- [x] Production startup rejects demo AI, missing provider credentials, SQLite, memory rate limits, non-HTTPS origins, insecure cookies, and missing proxy trust counts.
+- [x] Production startup rejects demo AI, missing provider credentials, SQLite, memory rate limits, non-HTTPS origins, insecure cookies, wrong Render rate-limit identity source, and nonzero forwarded-header trust.
 - [x] `.gitignore` and `.dockerignore` exclude private env files, databases, dependencies, build output, screenshots, caches, logs, and private key/certificate files.
 - [x] README screenshots copied from verified Stage 07 browser captures; no screenshot is represented as a live-AI result.
 - [x] `docs/08_publication_manifest.txt` lists intended public files exactly; private `context.md` and local `.env` are excluded.
@@ -44,7 +44,7 @@
 - [ ] User approves creation of one always-on web service, one PostgreSQL database, and one Key Value service.
 - [ ] Confirm live dashboard totals, billing/spend controls, region (Singapore), plan size, disk size, and retention before provisioning.
 - [ ] Enter the currently rotated OpenAI API key only in Render's secret UI; never put it in the Blueprint, Git, issue, chat, or video.
-- [ ] Confirm production values and trusted proxy counts before first launch.
+- [ ] Confirm production values and the public Render Cloudflare ingress before first launch; keep all `PROXY_FIX_X_*` values at `0`.
 - [ ] Run the deployment checklist in `docs/08_deployment_guide.md`, including the full public HTTPS browser journey and restart persistence.
 - [ ] Add the deployment URL only after all production checks pass.
 

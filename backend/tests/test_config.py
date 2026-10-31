@@ -47,14 +47,16 @@ def production_values(**updates):
         "session_cookie_secure": True,
         "trusted_origins": "https://momentos.example",
         "rate_limit_storage_uri": "rediss://default:placeholder@ratelimit.example:6379/0",
-        "proxy_fix_x_for": 2,
-        "proxy_fix_x_proto": 1,
+        "rate_limit_client_ip_source": "render_cf_connecting_ip",
+        "proxy_fix_x_for": 0,
+        "proxy_fix_x_proto": 0,
+        "proxy_fix_x_host": 0,
     }
     values.update(updates)
     return values
 
 
-def test_production_settings_require_live_ai_postgres_https_redis_and_trusted_proxy():
+def test_production_settings_require_live_ai_postgres_https_redis_and_safe_render_client_ip():
     settings = Settings(_env_file=None, **production_values())
     assert settings.database_uri.startswith("postgresql+psycopg://")
     from sqlalchemy.engine import make_url
@@ -81,8 +83,10 @@ def test_production_settings_require_live_ai_postgres_https_redis_and_trusted_pr
         ({"trusted_origins": "https://momentos.example,http://localhost:5000"}, "only HTTPS origins"),
         ({"rate_limit_storage_uri": "memory://"}, "RATE_LIMIT_STORAGE_URI"),
         ({"rate_limit_storage_uri": "redis://default:token@cache.example:6379"}, "rediss://"),
-        ({"proxy_fix_x_for": 0}, "trusted proxy counts"),
-        ({"proxy_fix_x_proto": 0}, "trusted proxy counts"),
+        ({"rate_limit_client_ip_source": "socket"}, "RATE_LIMIT_CLIENT_IP_SOURCE=render_cf_connecting_ip"),
+        ({"proxy_fix_x_for": 1}, "must not trust X-Forwarded"),
+        ({"proxy_fix_x_proto": 1}, "must not trust X-Forwarded"),
+        ({"proxy_fix_x_host": 1}, "must not trust X-Forwarded"),
         ({"session_cookie_samesite": "Strict"}, "SESSION_COOKIE_SAMESITE=Lax"),
         ({"openai_reasoning_effort": "medium"}, "OPENAI_REASONING_EFFORT=low"),
     ]
@@ -311,7 +315,7 @@ def test_proxy_fix_uses_only_configured_rightmost_forwarded_client_ip():
     assert response.json == {"remote_addr": "198.51.100.23"}
 
 
-def test_proxy_fix_render_two_proxy_chain_ignores_leftmost_untrusted_value():
+def test_proxy_fix_configured_chain_ignores_leftmost_untrusted_value():
     from flask import jsonify, request
 
     from momentos import create_app
@@ -332,3 +336,125 @@ def test_proxy_fix_render_two_proxy_chain_ignores_leftmost_untrusted_value():
         headers={"X-Forwarded-For": "203.0.113.99, 198.51.100.23, 192.0.2.10"},
     )
     assert response.json == {"remote_addr": "198.51.100.23"}
+
+
+def test_render_production_settings_ignore_forged_forwarded_headers():
+    from flask import jsonify, request
+
+    from momentos import create_app
+    from momentos.extensions import db
+
+    app = create_app(production_values())
+
+    @app.get("/__test__/proxy-context")
+    def proxy_context():
+        return jsonify(remote_addr=request.remote_addr, scheme=request.scheme, host=request.host)
+
+    response = app.test_client().get(
+        "/__test__/proxy-context",
+        environ_base={"REMOTE_ADDR": "10.0.0.5"},
+        headers={
+            "Host": "momentos.example",
+            "X-Forwarded-For": "203.0.113.99, 198.51.100.23",
+            "X-Forwarded-Proto": "https",
+            "X-Forwarded-Host": "attacker.example",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json == {"remote_addr": "10.0.0.5", "scheme": "http", "host": "momentos.example"}
+    with app.app_context():
+        db.session.remove()
+        db.engine.dispose()
+
+
+def test_render_client_ip_source_is_validated_and_ignores_spoofable_xff():
+    from flask import jsonify, request
+
+    from momentos import create_app
+    from momentos.extensions import db, limiter
+
+    app = create_app({
+        "app_env": "testing",
+        "database_url": "sqlite:///:memory:",
+        "secret_key": "proxy-test-secret-with-more-than-thirty-two-characters",
+        "ai_mode": "demo",
+        "app_base_url": "http://localhost",
+        "trusted_origins": "http://localhost",
+        "session_cookie_secure": False,
+        "rate_limit_storage_uri": "memory://",
+        "rate_limit_client_ip_source": "render_cf_connecting_ip",
+    })
+
+    @app.get("/__test__/limited-by-client-ip")
+    @limiter.limit("2 per minute")
+    def limited_by_client_ip():
+        return jsonify(client_ip=request.remote_addr)
+
+    client = app.test_client()
+    statuses = []
+    for forged_ip in ("203.0.113.1", "203.0.113.2", "203.0.113.3"):
+        response = client.get(
+            "/__test__/limited-by-client-ip",
+            environ_base={"REMOTE_ADDR": "10.0.0.5"},
+            headers={
+                "CF-Connecting-IP": "198.51.100.77",
+                "X-Forwarded-For": forged_ip,
+            },
+        )
+        statuses.append(response.status_code)
+    assert statuses == [200, 200, 429]
+
+    with app.test_request_context(
+        "/",
+        environ_base={"REMOTE_ADDR": "10.0.0.5"},
+        headers={"CF-Connecting-IP": "not-an-ip", "X-Forwarded-For": "203.0.113.9"},
+    ):
+        from momentos.extensions import rate_limit_client_address
+
+        assert rate_limit_client_address() == "10.0.0.5"
+    with app.test_request_context(
+        "/",
+        environ_base={"REMOTE_ADDR": "10.0.0.5"},
+        headers={"CF-Connecting-IP": "2001:0db8::1"},
+    ):
+        from momentos.extensions import rate_limit_client_address
+
+        assert rate_limit_client_address() == "2001:db8::1"
+
+    with app.app_context():
+        db.session.remove()
+        db.engine.dispose()
+
+
+def test_socket_rate_limit_source_ignores_all_forwarded_address_headers():
+    from momentos import create_app
+    from momentos.extensions import rate_limit_client_address
+
+    app = create_app({
+        "app_env": "testing",
+        "database_url": "sqlite:///:memory:",
+        "secret_key": "socket-test-secret-with-more-than-thirty-two-characters",
+        "ai_mode": "demo",
+        "app_base_url": "http://localhost",
+        "trusted_origins": "http://localhost",
+        "session_cookie_secure": False,
+        "rate_limit_storage_uri": "memory://",
+        "rate_limit_client_ip_source": "socket",
+    })
+    with app.test_request_context(
+        "/",
+        environ_base={"REMOTE_ADDR": "10.0.0.5"},
+        headers={
+            "CF-Connecting-IP": "203.0.113.9",
+            "X-Forwarded-For": "203.0.113.8",
+            "X-Forwarded-Proto": "https",
+            "X-Forwarded-Host": "attacker.example",
+        },
+    ):
+        assert rate_limit_client_address() == "10.0.0.5"
+
+    from momentos.extensions import db
+
+    with app.app_context():
+        db.session.remove()
+        db.engine.dispose()

@@ -51,10 +51,12 @@ services:
           name: momentos-rate-limits
           type: keyvalue
           property: connectionString
+      - key: RATE_LIMIT_CLIENT_IP_SOURCE
+        value: render_cf_connecting_ip
       - key: PROXY_FIX_X_FOR
-        sync: false
+        value: "0"
       - key: PROXY_FIX_X_PROTO
-        sync: false
+        value: "0"
       - key: PROXY_FIX_X_HOST
         value: "0"
       - key: MAX_CONTENT_LENGTH

@@ -18,7 +18,7 @@
 - [ ] Create the Render service from `render-free.yaml` path or configure the manual Docker service exactly as in the [guide](08_free_deployment_guide.md).
 - [ ] Set `APP_ENV=production`, `AI_MODE=live`, `OPENAI_MODEL=gpt-6-luna`, `OPENAI_REASONING_EFFORT=low`, secure cookies, exact HTTPS `APP_BASE_URL`/`TRUSTED_ORIGINS`, Neon `DATABASE_URL`, and Upstash `RATE_LIMIT_STORAGE_URI`.
 - [ ] Put `OPENAI_API_KEY`, Neon URL, Upstash URL, and any manual `SECRET_KEY` only in the Render dashboard secret fields.
-- [ ] Establish Render’s actual trusted forwarded-header counts from authoritative provider guidance before setting `PROXY_FIX_X_FOR` and `PROXY_FIX_X_PROTO`. **Do not guess; deployment is blocked until confirmed.** Keep `PROXY_FIX_X_HOST=0`.
+- [ ] Set `RATE_LIMIT_CLIENT_IP_SOURCE=render_cf_connecting_ip` only for the public Render web service using Cloudflare ingress. Keep `PROXY_FIX_X_FOR=0`, `PROXY_FIX_X_PROTO=0`, and `PROXY_FIX_X_HOST=0`; production startup rejects nonzero forwarded-header trust.
 - [ ] Ensure request quotas remain bounded and cost monitoring/alerts are enabled where available.
 
 ## Startup and deployment checks
@@ -28,6 +28,7 @@
 - [ ] Confirm Render Free service serves the Vite build and `/api/v1/health/ready` is healthy.
 - [ ] Confirm root and nested SPA URLs load over HTTPS and HTTPS cookies are Secure, HttpOnly, and SameSite=Lax.
 - [ ] Confirm session isolation, CSRF, rate limiting, ETags, idempotency, and safe errors remain active.
+- [ ] Confirm request limits use a validated single `CF-Connecting-IP`; if absent/malformed, limits fall back to the socket peer and remain enabled.
 - [ ] Create an illustrative test event and verify create/read/update after page refresh.
 - [ ] Restart the Render web service (do not delete/recreate Neon); verify the event remains persisted.
 - [ ] Verify Ripple preview/cancel leaves stored event unchanged and explicit confirmation persists the result.

@@ -24,6 +24,8 @@ services:
         sync: false
       - key: RATE_LIMIT_STORAGE_URI
         sync: false
+      - key: RATE_LIMIT_CLIENT_IP_SOURCE
+        value: render_cf_connecting_ip
       - key: SESSION_COOKIE_SECURE
         value: "true"
       - key: SESSION_COOKIE_SAMESITE
@@ -52,12 +54,10 @@ services:
         value: "0.01"
       - key: AI_OUTPUT_USD_PER_MILLION
         value: "0.50"
-      # Render docs don't promise a fixed X-Forwarded-For hop count. Set this
-      # from the actual configured proxy chain; production validation requires it.
       - key: PROXY_FIX_X_FOR
-        sync: false
+        value: "0"
       - key: PROXY_FIX_X_PROTO
-        sync: false
+        value: "0"
       - key: PROXY_FIX_X_HOST
         value: "0"
       - key: MAX_CONTENT_LENGTH

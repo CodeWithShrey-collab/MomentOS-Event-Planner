@@ -55,7 +55,8 @@ Configure these through the host's secret/environment manager. Do not copy a loc
 | `OPENAI_REASONING_EFFORT` | `low` by default; operation-specific medium effort remains bounded. |
 | `OPENAI_MAX_OUTPUT_TOKENS` | `3000` configured in the Blueprint; app bounds the accepted range. |
 | `AI_DAILY_REQUEST_LIMIT`, `AI_PER_MINUTE_LIMIT` | `20` and `5` in the prepared Blueprint; adjust only after reviewing expected spend. |
-| `PROXY_FIX_X_FOR`, `PROXY_FIX_X_PROTO`, `PROXY_FIX_X_HOST` | Set after confirming the deployed proxy chain. Render documents Cloudflare and Render load balancers but does not promise a fixed forwarded-header hop count. Do not use a guessed count. The paid Blueprint leaves X-For/X-Proto unset until configured. |
+| `RATE_LIMIT_CLIENT_IP_SOURCE` | `render_cf_connecting_ip` only for a public Render web service using its Cloudflare ingress |
+| `PROXY_FIX_X_FOR`, `PROXY_FIX_X_PROTO`, `PROXY_FIX_X_HOST` | All `0`; production rejects forwarded-header trust |
 | `MAX_CONTENT_LENGTH` | `262144` bytes. |
 
 Production settings now fail closed if the app uses demo AI, lacks a key, selects SQLite or memory rate-limit storage, lacks HTTPS origins/secure cookies, or does not declare trusted forwarded-header counts. Flask debug is explicitly false. Redis support is included through the `Flask-Limiter[redis]` dependency.
@@ -64,7 +65,7 @@ Production settings now fail closed if the app uses demo AI, lacks a key, select
 
 The browser and API share the same origin. Flask checks the CSRF token and exact request origin on state-changing requests. Sessions are opaque, hashed server-side, HttpOnly, Secure, and SameSite=Lax. Event ownership, ETag preconditions, and idempotency continue to be enforced by the API.
 
-Render documents traffic through Cloudflare and its load balancers and instructs applications to use `X-Forwarded-For` to identify the caller. The prepared `ProxyFix` uses bounded, explicit counts instead of trusting every forwarded value. Before launch, verify the actual chain from a deployed service, and attempt a request with forged leftmost forwarded values to confirm they cannot change the client address used by Flask-Limiter. If the chain differs, update counts to the provider's verified topology. Do not set unbounded trust.
+Werkzeug says each trusted forwarded-header count must exactly match the proxy chain and warns incoming values can be forged. Render documents Cloudflare and its load balancers but does not guarantee fixed XFF/XFP counts; therefore the paid and free Render configs set every `PROXY_FIX_X_*` value to `0`. For per-client Flask-Limiter identity, use `RATE_LIMIT_CLIENT_IP_SOURCE=render_cf_connecting_ip`: Render's public-service guidance says Cloudflare overwrites `CF-Connecting-IP` with the visitor IP. The app validates one IP address and falls back to the socket peer when missing/invalid. Do not use this source on a private service, direct app exposure, or a different ingress. Public origin checks remain based on exact configured HTTPS origins, not forwarded scheme/host values.
 
 HTTPS termination occurs at the provider. `SESSION_COOKIE_SECURE=true` is mandatory. CSRF origin checks use the browser's public `Origin` header and configured HTTPS allowlist.
 
@@ -104,7 +105,7 @@ The local Docker Engine was not available during this preparation session, so no
 2. Recheck the live Render prices, billing terms, storage assumptions, and workspace requirements.
 3. Import this repository's `render.yaml`; review every resource and monthly estimate before confirming creation.
 4. Set the canonical generated HTTPS domain in `APP_BASE_URL` and `TRUSTED_ORIGINS`; set the rotated `OPENAI_API_KEY` in the Render secret field.
-5. Confirm `APP_ENV=production`, `AI_MODE=live`, exact model, secure cookie, private PostgreSQL/Redis URLs, and proxy counts before deployment.
+5. Confirm `APP_ENV=production`, `AI_MODE=live`, exact model, secure cookie, private PostgreSQL/Redis URLs, `RATE_LIMIT_CLIENT_IP_SOURCE=render_cf_connecting_ip`, and all proxy counts set to `0` before deployment.
 6. Wait for migrations and readiness; inspect sanitized logs only.
 7. Run the checklist in `docs/08_final_checklist.md`, beginning with HTTPS, SPA refresh, sessions, CSRF, and isolated event persistence.
 8. Use one authorized live blueprint request and one authorized Copilot request at most for release verification; verify usage/token records without printing generated private content.
@@ -113,4 +114,4 @@ The local Docker Engine was not available during this preparation session, so no
 
 ## Current readiness
 
-Local app serving and prior frontend/backend suites are verified. The production startup configuration and deployment manifest are prepared and have targeted tests. No deployment, public URL, production PostgreSQL test, TLS/proxy verification, or full live-browser AI run has happened. Those are explicit release blockers, not completed results.
+Local app serving and prior frontend/backend suites are verified. The production startup configuration and deployment manifest are prepared and have targeted tests. The Render hop-count blocker is resolved through zero `ProxyFix` trust and a Render-documented Cloudflare client-IP header for rate limiting. No deployment, public URL, production PostgreSQL test, deployed TLS/cookie verification, or full live-browser AI run has happened; those remain outstanding release checks.
