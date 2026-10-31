@@ -1,6 +1,6 @@
 # Stage 08 — Production Deployment Guide
 
-**Status:** local configuration prepared; no cloud resources or public deployment created.
+**Status:** source code is published at [GitHub](https://github.com/CodeWithShrey-collab/MomentOS-Event-Planner). Deployment configuration is prepared; no cloud resources or public application deployment have been created.
 **Checked against provider documentation:** 2026-10-31. Pricing and plan limits can change; recheck the dashboards before provisioning.
 
 ## Recommended architecture
@@ -100,7 +100,7 @@ The local Docker Engine was not available during this preparation session, so no
 
 ## Deploy procedure (after authorization)
 
-1. Obtain authorization to initialize Git/publicize the repository and provision the selected paid services.
+1. Use the published GitHub repository as the source. Obtain authorization before provisioning the selected paid services or deploying publicly.
 2. Recheck the live Render prices, billing terms, storage assumptions, and workspace requirements.
 3. Import this repository's `render.yaml`; review every resource and monthly estimate before confirming creation.
 4. Set the canonical generated HTTPS domain in `APP_BASE_URL` and `TRUSTED_ORIGINS`; set the rotated `OPENAI_API_KEY` in the Render secret field.

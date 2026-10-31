@@ -1,6 +1,6 @@
 # PromptWars Challenge 5 — Submission Materials
 
-No public repository, deployed app, public demo video, LinkedIn post, or competition form submission currently exists. Replace placeholders only with URLs that have been published and verified. Do not submit until the final checklist is complete.
+The source repository is public at [https://github.com/CodeWithShrey-collab/MomentOS-Event-Planner](https://github.com/CodeWithShrey-collab/MomentOS-Event-Planner). The app is not yet deployed; no public deployment URL, demo video, LinkedIn post, or competition form submission currently exists. Replace the remaining placeholders only with URLs that have been published and verified. Do not submit until the final checklist is complete.
 
 ## Submission fields
 
@@ -10,7 +10,7 @@ No public repository, deployed app, public demo video, LinkedIn post, or competi
 
 ### 2. Public GitHub repository URL
 
-**Pending authorization and publication:** `[PUBLIC_GITHUB_REPOSITORY_URL]`
+**Published:** [https://github.com/CodeWithShrey-collab/MomentOS-Event-Planner](https://github.com/CodeWithShrey-collab/MomentOS-Event-Planner)
 
 ### 3. Project deployment URL
 
@@ -50,7 +50,7 @@ No public repository, deployed app, public demo video, LinkedIn post, or competi
 >
 > AI helps interpret the brief and explain options; the backend remains authoritative for calculations and saved changes. Vendor details and prices are illustrative unless entered and verified by the user.
 >
-> Project: [PUBLIC_GITHUB_REPOSITORY_URL]
+> Project: https://github.com/CodeWithShrey-collab/MomentOS-Event-Planner
 > Try MomentOS: [PUBLIC_HTTPS_DEPLOYMENT_URL]
 > Demo: [PUBLIC_DEMO_VIDEO_URL]
 >

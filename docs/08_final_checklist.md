@@ -1,6 +1,6 @@
 # Stage 08 — Final Release Checklist
 
-**Prepared locally only.** Public deployment, Git initialization/publication, paid resource provisioning, video upload, LinkedIn posting, and competition submission remain unauthorized and have not been performed.
+**Current status:** the source repository is public at [https://github.com/CodeWithShrey-collab/MomentOS-Event-Planner](https://github.com/CodeWithShrey-collab/MomentOS-Event-Planner). The app is not deployed. Paid resource provisioning, video upload, LinkedIn posting, and competition submission have not been performed.
 
 ## Local preparation completed
 
@@ -12,7 +12,7 @@
 - [x] `.gitignore` and `.dockerignore` exclude private env files, databases, dependencies, build output, screenshots, caches, logs, and private key/certificate files.
 - [x] README screenshots copied from verified Stage 07 browser captures; no screenshot is represented as a live-AI result.
 - [x] `docs/08_publication_manifest.txt` lists intended public files exactly; private `context.md` and local `.env` are excluded.
-- [x] Intended publication set is **2.10 MiB across 95 files**, well below 10 MB; Git object packing cannot be measured because no Git repository exists.
+- [x] Published source set is **2.10 MiB across 95 files**, well below 10 MB; the local Git object store measured **1.45 MiB** at publication.
 - [x] Submission text, demo script, LinkedIn draft, and deployment guide prepared with explicit URL placeholders.
 
 ## Local verification and environment facts
@@ -28,35 +28,15 @@
 | PostgreSQL migration compatibility | Offline Alembic SQL generation passed for PostgreSQL dialect (17 `CREATE TABLE`, 14 `CREATE INDEX`, both revisions present). This did not connect to a PostgreSQL server. |
 | Docker image build | Not run: Docker CLI exists but the Docker Desktop Linux engine was unavailable. |
 | PostgreSQL test | Not run: a local PostgreSQL Windows service was detected, but its data was not confirmed disposable and was not accessed or changed. No Docker daemon was available for an isolated Postgres container. |
-| Git history/repository size | Not available: this folder contains no `.git` metadata. No Git repository was initialized. |
+| Git history/repository size | Published on `main` at [the public repository](https://github.com/CodeWithShrey-collab/MomentOS-Event-Planner); 95 files, 2.10 MiB source set, 1.45 MiB local Git object store. Initial publication commit `9963f2b`; current published head at first push `2d3f6c2`. |
 
-## Repository publication (requires authorization)
+## Repository publication (complete)
 
-- [ ] User authorizes Git initialization inside this project root and a public repository under the user's GitHub account.
-- [ ] User chooses a repository license; none has been invented or added.
-- [ ] Read the exact [publication manifest](08_publication_manifest.txt), then review the filesystem and `.gitignore` results again immediately before staging.
-- [ ] Confirm `.env`, local SQLite/PostgreSQL dumps, all databases, dependencies, build output, test artifacts, caches, logs, private keys, and personal data are absent from staging.
-- [ ] Initialize Git only in this project root. Do not stage via `git add .`.
-- [ ] Inspect staged names and content, then check staged size and `.env.example` before commit/push.
-- [ ] Confirm the public GitHub repository stays below 10 MB after the initial commit.
-
-Safe commands **after explicit authorization** (run from the authorized root; replace remote placeholder only with the user's confirmed GitHub URL):
-
-```powershell
-git init -b main
-git status --short --ignored
-git check-ignore -v .env backend/instance/momentos.sqlite3 frontend/node_modules frontend/dist frontend/test-artifacts
-git add --pathspec-from-file=docs/08_publication_manifest.txt
-git diff --cached --check
-git diff --cached --stat
-git diff --cached --name-only
-# Inspect every staged file and scan staged content for credentials before continuing.
-git commit -m "Prepare MomentOS PromptWars submission"
-git remote add origin <CONFIRMED_GITHUB_REMOTE_URL>
-git push -u origin main
-```
-
-Do not execute these commands until authorization is given. Do not use `git add .`.
+- [x] Authorized repository created and verified as public and empty before publication.
+- [x] Git initialized only in this project root; `main` pushed to the authorized repository.
+- [x] `.env`, `context.md`, databases, dependencies, build output, test artifacts, caches, and private keys excluded; committed history scanned for credential patterns.
+- [x] Published repository and local Git object store verified below 10 MB.
+- [ ] Select and add a license if desired; none has been added.
 
 ## Paid deployment (requires authorization)
 
@@ -79,9 +59,8 @@ Do not execute these commands until authorization is given. Do not use `git add 
 
 ## Release blockers at handoff
 
-1. No Git repository or public GitHub repository exists; explicit authorization is needed before initialization/publication.
-2. No production resources or deployment exist; explicit authorization is needed before paid provisioning/public deployment.
-3. Production PostgreSQL and image build were not tested in this environment; test them after authorization and before making the URL public.
-4. Proxy header trust, secure cookies, CSRF, persistent data through restart, and production session isolation require deployment verification.
-5. Full live-browser AI has not been verified; only Stage 06's live blueprint/save/reload and mocked-provider browser workflows are verified.
-6. Demo video, LinkedIn post, and competition submission URLs do not yet exist; recording/upload/posting/submission require explicit authorization.
+1. No production resources or deployment exist; authorization is needed before paid provisioning/public deployment.
+2. Production PostgreSQL and image build were not tested in this environment; verify them before release.
+3. Proxy header trust, secure cookies, CSRF, persistent data through restart, and production session isolation require deployment verification.
+4. Full live-browser AI has not been verified; only Stage 06's live blueprint/save/reload and mocked-provider browser workflows are verified.
+5. Demo video, LinkedIn post, and competition submission URLs do not yet exist; recording/upload/posting/submission require explicit authorization.

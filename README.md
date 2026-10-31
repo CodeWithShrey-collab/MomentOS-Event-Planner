@@ -6,7 +6,7 @@ MomentOS turns a wedding, birthday, or community-event idea into an editable pla
 
 **PromptWars Challenge 5 — Celebration & Event Planner** · Hack2Skill PromptWars Virtual
 
-> **Release status:** the production configuration and submission materials are prepared. The app is not yet publicly deployed, and no public repository has been created. Links will be added after those steps are authorized and verified.
+> **Release status:** the [source repository is publicly available on GitHub](https://github.com/CodeWithShrey-collab/MomentOS-Event-Planner). The application is not yet deployed; production hosting and deployment verification remain pending.
 
 ## Why MomentOS
 
@@ -145,7 +145,7 @@ The Render Blueprint is [`render.yaml`](render.yaml). It requests `OPENAI_API_KE
 
 ## Current limitations
 
-- Not yet deployed. No public app URL or public GitHub URL exists.
+- The application is not yet deployed, so there is no public app URL. The public source repository is available at [github.com/CodeWithShrey-collab/MomentOS-Event-Planner](https://github.com/CodeWithShrey-collab/MomentOS-Event-Planner).
 - PostgreSQL has not been run through the app's migrations/persistence tests. A local PostgreSQL Windows service is present, but its data was not assumed disposable; the Docker daemon was unavailable for an isolated container.
 - Real production TLS/reverse-proxy behavior, shared rate-limit operation, and restart persistence remain unverified.
 - The browser suite mocks AI provider responses. Stage 06 verified a real GPT-6 Luna blueprint, save, and reload, but a full live-browser plan-to-Copilot flow has not been run.
