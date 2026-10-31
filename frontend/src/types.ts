@@ -1,6 +1,6 @@
 export type EventType = 'wedding' | 'birthday' | 'community';
 export type Provenance = 'illustrative_assumption' | 'user_entered' | 'suggested';
-export type TaskStatus = 'not_started' | 'in_progress' | 'completed';
+export type TaskStatus = 'not_started' | 'in_progress' | 'blocked' | 'completed';
 export type VendorStatus = 'to_find' | 'contacted' | 'shortlisted' | 'selected';
 
 export interface BudgetCategory {
@@ -130,6 +130,8 @@ export interface ScenarioResult {
   deltaMinor: number;
   tables: number | null;
   capacityState: 'within' | 'exceeded' | 'unknown';
+  warnings?: string[];
+  blockers?: string[];
 }
 
 export interface ApiEnvelope<T> {

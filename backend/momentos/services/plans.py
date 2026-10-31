@@ -3,13 +3,20 @@ from __future__ import annotations
 import copy
 import json
 import uuid
+from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
-from typing import Any, Callable
+from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import select, update
 
+from ..domain import (
+    calculate_budget,
+    detect_schedule_conflicts,
+    validate_task_dependencies,
+)
 from ..errors import ApiError
 from ..extensions import db
 from ..models import (
@@ -24,7 +31,6 @@ from ..models import (
     Vendor,
     VendorQuote,
 )
-from ..domain import calculate_budget, detect_schedule_conflicts, topological_task_order, validate_task_dependencies
 from ..security import iso_utc
 
 
@@ -184,7 +190,21 @@ def _uuid_value(value: Any = None) -> str:
     return str(uuid.uuid4())
 
 
-def persist_plan(event: Event, session_id: str, plan: dict[str, Any], *, change_kind: str, base_version_no: int | None, source_simulation_id: str | None = None, summary: str | None = None, update_event: bool = True) -> EventPlanVersion:
+@dataclass(frozen=True, slots=True)
+class _PlanContext:
+    """Validated event-level values shared by plan row builders."""
+
+    brief: dict[str, Any]
+    current_version_no: int | None
+    event_type: str
+    title: str
+    currency: str
+    budget_limit_minor: int | None
+    guest_count: int | None
+    timezone_name: str | None
+
+
+def _validate_plan_structure(plan: Any) -> dict[str, Any]:
     if not isinstance(plan, dict):
         raise ApiError(422, "validation_failed", "The plan must be a structured object.")
     required = {"event_brief", "concept", "budget_categories", "budget_items", "tasks", "dependencies", "vendor_categories", "ideas", "assumptions", "unknowns", "validation", "ai_status"}
@@ -200,12 +220,14 @@ def persist_plan(event: Event, session_id: str, plan: dict[str, Any], *, change_
         raise ApiError(422, "validation_failed", "The event concept must be an object.")
     if any(not isinstance(row, dict) for field in ("budget_categories", "budget_items", "tasks") for row in plan[field]):
         raise ApiError(422, "validation_failed", "Budget and task rows must be objects.")
-    current = event.current_plan_version_no
-    if base_version_no != current:
-        raise ApiError(412, "stale_event_version", "This plan draft is based on an older event version.")
-    brief = plan["event_brief"]
-    if not isinstance(brief, dict):
-        raise ApiError(422, "validation_failed", "The event brief must be an object.")
+    return plan
+
+
+def _validate_plan_brief(
+    event: Event,
+    brief: dict[str, Any],
+    current_version_no: int | None,
+) -> _PlanContext:
     event_type = brief.get("event_type", event.event_type)
     title = brief.get("title", brief.get("event_name", event.title))
     currency = brief.get("currency", event.currency)
@@ -227,7 +249,30 @@ def persist_plan(event: Event, session_id: str, plan: dict[str, Any], *, change_
             ZoneInfo(timezone_name)
         except (ZoneInfoNotFoundError, TypeError) as exc:
             raise ApiError(422, "validation_failed", "Use a valid IANA time zone.") from exc
+    return _PlanContext(
+        brief=brief,
+        current_version_no=current_version_no,
+        event_type=event_type,
+        title=title,
+        currency=currency,
+        budget_limit_minor=budget_limit,
+        guest_count=guest_count,
+        timezone_name=timezone_name,
+    )
 
+
+def _validate_plan_input(event: Event, plan: Any, base_version_no: int | None) -> _PlanContext:
+    plan = _validate_plan_structure(plan)
+    current_version_no = event.current_plan_version_no
+    if base_version_no != current_version_no:
+        raise ApiError(412, "stale_event_version", "This plan draft is based on an older event version.")
+    brief = plan["event_brief"]
+    if not isinstance(brief, dict):
+        raise ApiError(422, "validation_failed", "The event brief must be an object.")
+    return _validate_plan_brief(event, brief, current_version_no)
+
+
+def _build_budget_categories(plan: dict[str, Any]) -> tuple[dict[str, str], list[BudgetCategory]]:
     category_ids: dict[str, str] = {}
     categories: list[BudgetCategory] = []
     for index, item in enumerate(plan["budget_categories"]):
@@ -243,29 +288,49 @@ def persist_plan(event: Event, session_id: str, plan: dict[str, Any], *, change_
             planned_minor=_nonnegative_optional(item.get("planned_minor")), sort_order=_nonnegative(item.get("sort_order", index)),
             source=_source(item.get("source", plan.get("ai_status", "demo"))), is_required=bool(item.get("is_required", False)),
         ))
+    return category_ids, categories
 
-    version_no = (current or 0) + 1
+
+def _create_plan_version(
+    event: Event,
+    session_id: str,
+    context: _PlanContext,
+    *,
+    change_kind: str,
+    source_simulation_id: str | None,
+    summary: str | None,
+) -> EventPlanVersion:
     version = EventPlanVersion(
-        id=str(uuid.uuid4()), event_id=event.id, version_no=version_no, base_version_no=current,
-        change_kind=change_kind, event_type=event_type, title=str(title)[:160], currency=currency,
+        id=str(uuid.uuid4()), event_id=event.id,
+        version_no=(context.current_version_no or 0) + 1,
+        base_version_no=context.current_version_no,
+        change_kind=change_kind, event_type=context.event_type,
+        title=context.title[:160], currency=context.currency,
         created_at=datetime.now(UTC), created_by_session_id=session_id,
         source_simulation_id=source_simulation_id, change_summary=summary,
     )
     db.session.add(version)
     db.session.flush()
+    return version
+
+
+def _persist_categories(version: EventPlanVersion, categories: list[BudgetCategory]) -> None:
     for category in categories:
         category.event_version_id = version.id
         db.session.add(category)
     db.session.flush()
 
-    detail = EventDetails(
+
+def _build_event_details(event: Event, context: _PlanContext, version: EventPlanVersion) -> EventDetails:
+    brief = context.brief
+    return EventDetails(
         event_version_id=version.id,
-        budget_limit_minor=budget_limit,
+        budget_limit_minor=context.budget_limit_minor,
         event_date=_parse_date(brief.get("event_date", event.event_date)),
-        timezone=timezone_name,
+        timezone=context.timezone_name,
         location_label=brief.get("location_label", event.location_label),
-        guest_count=guest_count,
-        guest_count_source="user" if guest_count is not None else None,
+        guest_count=context.guest_count,
+        guest_count_source="user" if context.guest_count is not None else None,
         venue_capacity=brief.get("venue_capacity"),
         venue_capacity_source="user" if brief.get("venue_capacity") is not None else None,
         seats_per_table=brief.get("seats_per_table"),
@@ -274,13 +339,20 @@ def persist_plan(event: Event, session_id: str, plan: dict[str, Any], *, change_
         preferences_json=_safe_json_object(brief.get("preferences", {}), "preferences"),
         constraints_json=_safe_json_object(brief.get("constraints", {}), "constraints"),
     )
-    db.session.add(detail)
 
+
+def _build_budget_items(
+    plan: dict[str, Any],
+    category_ids: dict[str, str],
+    categories: list[BudgetCategory],
+    version: EventPlanVersion,
+) -> list[BudgetItem]:
+    known_category_ids = {category.logical_id for category in categories}
     items: list[BudgetItem] = []
     for row in plan["budget_items"]:
         key = str(row.get("category_key", row.get("category_id", "")))
         category_id = category_ids.get(key, str(row.get("category_id", "")))
-        if category_id not in {c.logical_id for c in categories}:
+        if category_id not in known_category_ids:
             raise ApiError(422, "validation_failed", "A budget item references an unknown category.")
         quantity = row.get("quantity")
         if quantity is not None:
@@ -290,7 +362,7 @@ def persist_plan(event: Event, session_id: str, plan: dict[str, Any], *, change_
                 quantity = Decimal(quantity)
             except (InvalidOperation, TypeError, ValueError) as exc:
                 raise ApiError(422, "validation_failed", "Budget quantity must be a finite positive decimal.") from exc
-            if not quantity.is_finite() or quantity <= 0 or quantity > Decimal("1000000") or -quantity.as_tuple().exponent > 3:
+            if not quantity.is_finite() or quantity <= 0 or quantity > Decimal(1000000) or -quantity.as_tuple().exponent > 3:
                 raise ApiError(422, "validation_failed", "Budget quantity must be finite, positive, and use at most three decimal places.")
         items.append(BudgetItem(
             event_version_id=version.id, logical_id=_uuid_value(row.get("logical_id")),
@@ -301,14 +373,25 @@ def persist_plan(event: Event, session_id: str, plan: dict[str, Any], *, change_
             status=_item_status(row.get("status", row.get("estimate_basis", "illustrative_estimate"))),
             source_note=str(row.get("source_note") or row.get("provenance") or "Illustrative planning assumption")[:600],
         ))
-    db.session.add_all(items)
-    db.session.flush()
+    return items
 
+
+def _task_id_map(task_rows: list[dict[str, Any]]) -> dict[str, str]:
     task_ids: dict[str, str] = {}
-    task_rows = plan["tasks"]
     for row in task_rows:
         key = str(row.get("key", row.get("id", len(task_ids))))
         task_ids[key] = _uuid_value(row.get("logical_id"))
+    return task_ids
+
+
+def _build_tasks(
+    task_rows: list[dict[str, Any]],
+    task_ids: dict[str, str],
+    version: EventPlanVersion,
+    session_id: str,
+    change_kind: str,
+    ai_status: Any,
+) -> tuple[list[Task], list[tuple[str, str, int]]]:
     tasks: list[Task] = []
     dependency_rows: list[tuple[str, str, int]] = []
     for index, row in enumerate(task_rows):
@@ -331,7 +414,7 @@ def persist_plan(event: Event, session_id: str, plan: dict[str, Any], *, change_
             task_type=row.get("task_type", "task"), status=status, owner_label=row.get("owner_label"),
             due_at=_parse_datetime(row.get("due_at")), due_local_date=_parse_date(row.get("due_local_date")),
             phase=str(row.get("phase") or "before_event")[:80], priority=row.get("priority", "medium"),
-            source=_source(row.get("source", plan.get("ai_status", "demo"))),
+            source=_source(row.get("source", ai_status)),
             vendor_id=row.get("vendor_id"),
             completion_source="user" if completed else None,
             completed_at=datetime.now(UTC) if completed else None,
@@ -341,6 +424,14 @@ def persist_plan(event: Event, session_id: str, plan: dict[str, Any], *, change_
         for parent in parents:
             parent_id = task_ids.get(str(parent), str(parent))
             dependency_rows.append((logical_id, parent_id, 0))
+    return tasks, dependency_rows
+
+
+def _append_explicit_dependencies(
+    plan: dict[str, Any],
+    task_ids: dict[str, str],
+    dependency_rows: list[tuple[str, str, int]],
+) -> None:
     for dependency in plan.get("dependencies", []):
         if not isinstance(dependency, dict):
             raise ApiError(422, "validation_failed", "Dependency rows must be objects.")
@@ -350,9 +441,16 @@ def persist_plan(event: Event, session_id: str, plan: dict[str, Any], *, change_
         parent_id = task_ids.get(parent_key, parent_key)
         lag = _nonnegative(dependency.get("lag_minutes", 0))
         dependency_rows.append((task_id, parent_id, lag))
+
+
+def _persist_task_graph(
+    version: EventPlanVersion,
+    tasks: list[Task],
+    dependency_rows: list[tuple[str, str, int]],
+) -> None:
     db.session.add_all(tasks)
     db.session.flush()
-    task_graph = [{"logical_id": t.logical_id, "dependencies": [parent for task_id, parent, _ in dependency_rows if task_id == t.logical_id]} for t in tasks]
+    task_graph = [{"logical_id": task.logical_id, "dependencies": [parent for task_id, parent, _ in dependency_rows if task_id == task.logical_id]} for task in tasks]
     dep_validation = validate_task_dependencies(task_graph)
     if not dep_validation.get("valid"):
         raise ApiError(422, "invalid_dependency_graph", "The task dependency graph is invalid.")
@@ -360,38 +458,82 @@ def persist_plan(event: Event, session_id: str, plan: dict[str, Any], *, change_
     for task_id, parent, lag in dependency_rows:
         key = (task_id, parent)
         unique_dependencies[key] = max(lag, unique_dependencies.get(key, 0))
-    db.session.add_all([TaskDependency(event_version_id=version.id, task_id=task_id, depends_on_task_id=parent, lag_minutes=lag)
-                        for (task_id, parent), lag in sorted(unique_dependencies.items())])
+    db.session.add_all([
+        TaskDependency(event_version_id=version.id, task_id=task_id, depends_on_task_id=parent, lag_minutes=lag)
+        for (task_id, parent), lag in sorted(unique_dependencies.items())
+    ])
 
-    vendor_rows = []
-    for row in plan["vendor_categories"]:
-        if isinstance(row, str):
-            row = {"category": row}
-        vendor_id = _uuid_value(row.get("logical_id"))
-        vendor_rows.append(Vendor(
-            event_version_id=version.id, logical_id=vendor_id,
-            category=str(row.get("key", row.get("category", row.get("name", "other"))))[:80],
-            display_name=str(row.get("display_name") or "")[:160] or None,
-            contact_name=str(row.get("contact_name") or "")[:120] or None,
-            email=str(row.get("email") or "")[:254] or None,
-            phone=str(row.get("phone") or "")[:40] or None,
-            location_note=str(row.get("location_note") or "")[:240] or None,
-            status=row.get("status", "to_find"),
-            information_source="user_entered" if row.get("information_source") == "user_entered" or row.get("display_name") else "checklist_suggestion",
-            notes=str(row.get("notes") or row.get("why") or row.get("rationale") or "")[:1200] or None,
+
+def _build_vendor(row: dict[str, Any], version: EventPlanVersion, vendor_id: str) -> Vendor:
+    return Vendor(
+        event_version_id=version.id, logical_id=vendor_id,
+        category=str(row.get("key", row.get("category", row.get("name", "other"))))[:80],
+        display_name=str(row.get("display_name") or "")[:160] or None,
+        contact_name=str(row.get("contact_name") or "")[:120] or None,
+        email=str(row.get("email") or "")[:254] or None,
+        phone=str(row.get("phone") or "")[:40] or None,
+        location_note=str(row.get("location_note") or "")[:240] or None,
+        status=row.get("status", "to_find"),
+        information_source="user_entered" if row.get("information_source") == "user_entered" or row.get("display_name") else "checklist_suggestion",
+        notes=str(row.get("notes") or row.get("why") or row.get("rationale") or "")[:1200] or None,
+    )
+
+
+def _persist_vendor_quotes(
+    row: dict[str, Any], version: EventPlanVersion, vendor_id: str, currency: str,
+) -> None:
+    for quote in row.get("quotes", []):
+        if not isinstance(quote, dict):
+            continue
+        if quote.get("currency", currency) != currency:
+            raise ApiError(422, "validation_failed", "Vendor quote currency must match the event currency.")
+        db.session.add(VendorQuote(
+            event_version_id=version.id, logical_id=_uuid_value(quote.get("logical_id") or quote.get("id")),
+            vendor_id=vendor_id, amount_minor=_nonnegative(quote.get("amount_minor", 0)), currency=currency,
+            quote_date=_parse_date(quote.get("quote_date")), valid_until=_parse_date(quote.get("valid_until")),
+            scope_note=str(quote.get("scope_note") or "User-entered quotation")[:600],
+            source="user_entered", status=quote.get("status", "received_by_user"),
         ))
-        for quote in row.get("quotes", []):
-            if not isinstance(quote, dict):
-                continue
-            if quote.get("currency", currency) != currency:
-                raise ApiError(422, "validation_failed", "Vendor quote currency must match the event currency.")
-            db.session.add(VendorQuote(
-                event_version_id=version.id, logical_id=_uuid_value(quote.get("logical_id") or quote.get("id")),
-                vendor_id=vendor_id, amount_minor=_nonnegative(quote.get("amount_minor", 0)), currency=currency,
-                quote_date=_parse_date(quote.get("quote_date")), valid_until=_parse_date(quote.get("valid_until")),
-                scope_note=str(quote.get("scope_note") or "User-entered quotation")[:600],
-                source="user_entered", status=quote.get("status", "received_by_user"),
-            ))
+
+
+def _build_vendors(plan: dict[str, Any], version: EventPlanVersion, currency: str) -> list[Vendor]:
+    vendor_rows: list[Vendor] = []
+    for raw_row in plan["vendor_categories"]:
+        row = {"category": raw_row} if isinstance(raw_row, str) else raw_row
+        vendor_id = _uuid_value(row.get("logical_id"))
+        vendor_rows.append(_build_vendor(row, version, vendor_id))
+        _persist_vendor_quotes(row, version, vendor_id, currency)
+    return vendor_rows
+
+
+def persist_plan(event: Event, session_id: str, plan: dict[str, Any], *, change_kind: str, base_version_no: int | None, source_simulation_id: str | None = None, summary: str | None = None, update_event: bool = True) -> EventPlanVersion:
+    context = _validate_plan_input(event, plan, base_version_no)
+    category_ids, categories = _build_budget_categories(plan)
+    version = _create_plan_version(
+        event,
+        session_id,
+        context,
+        change_kind=change_kind,
+        source_simulation_id=source_simulation_id,
+        summary=summary,
+    )
+    _persist_categories(version, categories)
+
+    detail = _build_event_details(event, context, version)
+    db.session.add(detail)
+    items = _build_budget_items(plan, category_ids, categories, version)
+    db.session.add_all(items)
+    db.session.flush()
+
+    task_rows = plan["tasks"]
+    task_ids = _task_id_map(task_rows)
+    tasks, dependency_rows = _build_tasks(
+        task_rows, task_ids, version, session_id, change_kind, plan.get("ai_status", "demo")
+    )
+    _append_explicit_dependencies(plan, task_ids, dependency_rows)
+    _persist_task_graph(version, tasks, dependency_rows)
+
+    vendor_rows = _build_vendors(plan, version, context.currency)
     db.session.add_all(vendor_rows)
     db.session.flush()
 
@@ -528,7 +670,7 @@ def _parse_datetime(value: Any):
         parsed = value
     else:
         try:
-            parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+            parsed = datetime.fromisoformat(str(value))
         except ValueError as exc:
             raise ApiError(422, "validation_failed", "Task timestamps must use ISO-8601 format.") from exc
     if parsed.tzinfo is None:
