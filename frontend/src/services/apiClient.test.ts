@@ -19,4 +19,16 @@ describe('same-origin session API client', () => {
     expect(headers.get('X-CSRF-Token')).toBe('csrf-test');
     expect(headers.get('Idempotency-Key')).toBeTruthy();
   });
+
+  it('preserves Retry-After on rate-limit responses', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: { code: 'session_required', message: 'Sign in' } }), { status: 401 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: { csrf_token: 'csrf-test', expires_at: 'later' } }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: { code: 'ai_daily_limit', message: 'Daily limit reached.' } }), { status: 429, headers: { 'Retry-After': '86400' } }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(request('/events/one/plan-drafts', { method: 'POST', body: '{}' })).rejects.toMatchObject({
+      code: 'ai_daily_limit', retryAfterSeconds: 86400,
+    });
+  });
 });

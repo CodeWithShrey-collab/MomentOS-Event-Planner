@@ -138,7 +138,7 @@ test('real React-to-Flask wedding flow uses validated mocked provider output and
 
   expect(planDraftRequests).toEqual(['POST']);
   expect(copilotRequests).toEqual(['POST']);
-  const observationsResponse = await page.request.get('http://127.0.0.1:5002/__test__/ai-calls');
+  const observationsResponse = await page.request.get(`http://127.0.0.1:${process.env.MOMENTOS_LIVE_TEST_PORT ?? '5002'}/__test__/ai-calls`);
   expect(observationsResponse.ok()).toBeTruthy();
   const observations = await observationsResponse.json() as Array<{ operation: string; context_fields: string[]; known_fact_fields: string[] }>;
   const copilotObservation = observations.find((entry) => entry.operation === 'answer_event_question');

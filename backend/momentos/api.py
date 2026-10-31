@@ -7,6 +7,7 @@ import re
 import uuid
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal, ROUND_HALF_UP
+from math import ceil
 from typing import Any, Callable
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -235,7 +236,14 @@ def _check_ai_quota(session: GuestSession) -> None:
     with db.session.begin_nested():
         reservation = db.session.execute(statement)
     if reservation.rowcount != 1:
-        raise ApiError(429, "rate_limited", "This planning session has reached its daily AI request limit.")
+        next_reset = datetime.combine(now.date() + timedelta(days=1), time.min, tzinfo=UTC)
+        retry_after = max(1, ceil((next_reset - now).total_seconds()))
+        raise ApiError(
+            429,
+            "ai_daily_limit",
+            "This planning session has reached its daily AI request limit.",
+            retry_after_seconds=retry_after,
+        )
     # The reservation must survive provider timeouts and process restarts.
     db.session.commit()
 

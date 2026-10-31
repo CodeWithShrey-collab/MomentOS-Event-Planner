@@ -88,7 +88,7 @@ Commit response: event, new version, new ETag, immutable change receipt, acknowl
 | 415 | `unsupported_media_type` | Client defect or wrong content type. |
 | 422 | `validation_failed`, `invalid_dependency_graph`, `ai_output_invalid` | Show validated errors; AI output failure offers a labeled retry/demo option. |
 | 428 | `precondition_required` | Reload the ETag before mutating. |
-| 429 | `rate_limited` | Honor bounded Retry-After; do not auto-loop. |
+| 429 | `rate_limited`, `ai_daily_limit` | Honor Retry-After; the daily AI quota resets at 00:00 UTC and returns the exact remaining seconds. Do not auto-loop. |
 | 502 | `ai_provider_unavailable`, `ai_refused`, `ai_incomplete` | Preserve request; report GPT-6 Luna issue; no model substitution. |
 | 504 | `ai_timeout` | Preserve work; offer explicit retry. |
 | 500/503 | `internal_error`, `service_unavailable` | Safe message plus request ID; never expose internals. |

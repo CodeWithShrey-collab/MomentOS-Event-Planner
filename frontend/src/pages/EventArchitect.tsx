@@ -8,6 +8,7 @@ import { Brand } from '../components/AppShell';
 import { Button, ConfirmationDialog, DemoBanner, LoadingBlock, StatusBadge } from '../components/ui';
 import { useToast } from '../hooks/useToast';
 import { categoryColorToken } from '../theme';
+import { ApiError } from '../services/apiClient';
 
 const priorities = ['Good food', 'Time with family', 'A relaxed pace', 'Keep to budget', 'Accessibility', 'A little unexpected magic'];
 
@@ -61,7 +62,13 @@ export function EventArchitect() {
       setStep('review');
     } catch (error) {
       setStep('form');
-      showToast('We could not prepare that plan', error instanceof Error ? error.message : 'Try again in a moment.');
+      if (error instanceof ApiError && error.code === 'ai_daily_limit' && error.retryAfterSeconds) {
+        const resumesAt = new Date(Date.now() + error.retryAfterSeconds * 1000);
+        const localTime = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }).format(resumesAt);
+        showToast('Daily AI limit reached', `Planning can resume at ${localTime}.`, 'error');
+      } else {
+        showToast('We could not prepare that plan', error instanceof Error ? error.message : 'Try again in a moment.', 'error');
+      }
     }
   }
 
@@ -76,7 +83,7 @@ export function EventArchitect() {
     } catch (error) {
       setStep('review');
       setConfirmOpen(false);
-      showToast('The plan was not saved', error instanceof Error ? error.message : 'Please try again.');
+      showToast('The plan was not saved', error instanceof Error ? error.message : 'Please try again.', 'error');
     }
   }
 

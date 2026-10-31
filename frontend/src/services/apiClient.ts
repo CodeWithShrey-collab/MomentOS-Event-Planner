@@ -2,7 +2,7 @@
 /** Same-origin, cookie-authenticated client for the versioned Flask API. */
 export type ApiEnvelope<T> = { data: T; request_id: string };
 export class ApiError extends Error {
-  constructor(public code: string, message: string, public status: number, public fields?: unknown) {
+  constructor(public code: string, message: string, public status: number, public fields?: unknown, public retryAfterSeconds?: number) {
     super(message); this.name = 'ApiError';
   }
 }
@@ -42,7 +42,8 @@ async function raw(path: string, init: RequestInit = {}, retrySession = true): P
     if (!response.ok) {
       let body: any = null;
       try { body = await response.json(); } catch { /* sanitized fallback below */ }
-      throw new ApiError(body?.error?.code ?? 'network_error', body?.error?.message ?? `Request failed (${response.status}).`, response.status, body?.error?.fields);
+      const retryAfter = Number(response.headers.get('Retry-After'));
+      throw new ApiError(body?.error?.code ?? 'network_error', body?.error?.message ?? `Request failed (${response.status}).`, response.status, body?.error?.fields, Number.isInteger(retryAfter) && retryAfter > 0 ? retryAfter : undefined);
     }
     return response;
   } catch (error) {

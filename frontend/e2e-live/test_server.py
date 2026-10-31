@@ -10,6 +10,7 @@ from types import SimpleNamespace
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT / "backend"))
+frontend_origin = f"http://127.0.0.1:{os.environ.get('MOMENTOS_LIVE_TEST_WEB_PORT', '4174')}"
 
 from flask import jsonify  # noqa: E402
 from momentos import create_app  # noqa: E402
@@ -31,8 +32,8 @@ app = create_app(
         # no OpenAI client/request is constructed by this server.
         "openai_api_key": "playwright-mock-provider-only",
         "openai_model": "gpt-6-luna",
-        "app_base_url": "http://127.0.0.1:4174",
-        "trusted_origins": "http://127.0.0.1:4174",
+        "app_base_url": frontend_origin,
+        "trusted_origins": frontend_origin,
         "session_cookie_secure": False,
         "rate_limit_storage_uri": "memory://",
     }

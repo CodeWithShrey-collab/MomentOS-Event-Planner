@@ -3,6 +3,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../hooks/useToast';
 import { demoApi } from '../services/demoApi';
+import { ApiError } from '../services/apiClient';
 import type { EventRecord, PlanDraft } from '../types';
 import { EventArchitect } from './EventArchitect';
 
@@ -38,5 +39,21 @@ describe('EventArchitect', () => {
     fireEvent.click(screen.getByRole('button', { name: /save this plan/i }));
     expect(screen.getByText(/saved to your event workspace/i)).toBeInTheDocument();
     expect(screen.getByText(/becomes your saved plan only after you confirm/i)).toBeInTheDocument();
+  });
+
+  it('explains the AI quota reset and marks the notification as an error', async () => {
+    vi.spyOn(demoApi, 'createEvent').mockResolvedValue({
+      data: { id: 'quota-event', eventType: 'wedding', title: 'Nagpur Wedding', currency: 'INR', budgetLimitMinor: 6000000, eventDate: '', city: 'Nagpur', guestCount: 150, venueCapacity: null, seatsPerTable: null, invitationUnit: 'unknown', revision: 0, versionNumber: 0, createdAt: '', categories: [], tasks: [], vendors: [], concept: '', priorities: [], theme: '', notes: '', accepted: false },
+      request_id: 'test',
+    });
+    vi.spyOn(demoApi, 'generatePlanDraft').mockRejectedValue(new ApiError('ai_daily_limit', 'Daily limit reached.', 429, undefined, 3600));
+
+    render(<MemoryRouter initialEntries={['/events/new']}><ToastProvider><EventArchitect /></ToastProvider></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText(/give it a name/i), { target: { value: 'Nagpur Wedding' } });
+    fireEvent.click(screen.getByRole('button', { name: /prepare my plan/i }));
+
+    expect(await screen.findByText('Daily AI limit reached')).toBeInTheDocument();
+    expect(screen.getByText(/Planning can resume at/)).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Error' })).toBeInTheDocument();
   });
 });

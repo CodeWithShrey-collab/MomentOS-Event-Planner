@@ -13,7 +13,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from momentos import create_app  # noqa: E402
-from momentos.ai_provider import AICompletion, AIUsage  # noqa: E402
+from momentos.ai_provider import AICompletion, AIIncomplete, AIUsage  # noqa: E402
 from momentos.ai_schemas import EventRequirements  # noqa: E402
 from momentos.extensions import db  # noqa: E402
 from momentos.models import AIQuotaBucket, AIUsageRecord  # noqa: E402
@@ -46,11 +46,14 @@ def app():
 
 
 class FakeProvider:
-    def __init__(self):
+    def __init__(self, *, fail_incomplete: bool = False):
         self.calls = 0
+        self.fail_incomplete = fail_incomplete
 
     def extract_event_requirements(self, _request):
         self.calls += 1
+        if self.fail_incomplete:
+            raise AIIncomplete("mock incomplete response", diagnostics={"failure_stage": "incomplete"})
         return AICompletion(
             data=EventRequirements(unknowns=["event date"]),
             usage=AIUsage(
@@ -112,7 +115,8 @@ def test_daily_quota_reserves_atomically_and_same_key_replays_without_provider_c
         json=body,
     )
     assert over_limit.status_code == 429
-    assert over_limit.get_json()["error"]["code"] == "rate_limited"
+    assert over_limit.get_json()["error"]["code"] == "ai_daily_limit"
+    assert 1 <= int(over_limit.headers["Retry-After"]) <= 86_400
     assert provider.calls == 1
 
     with app.app_context():
@@ -121,3 +125,38 @@ def test_daily_quota_reserves_atomically_and_same_key_replays_without_provider_c
         assert bucket.reserved_count == 1
         assert usage.status == "success"
         assert usage.model_id == "gpt-6-luna"
+
+
+def test_incomplete_provider_attempt_counts_once_and_retry_is_blocked_before_provider(app, monkeypatch):
+    from momentos import api as api_module
+
+    provider = FakeProvider(fail_incomplete=True)
+    monkeypatch.setattr(api_module, "_live_provider", lambda: provider)
+    client = app.test_client()
+    csrf = client.post(f"{API}/session").get_json()["data"]["csrf_token"]
+    headers = {"Origin": ORIGIN, "X-CSRF-Token": csrf, "Idempotency-Key": str(uuid.uuid4())}
+    event = client.post(
+        f"{API}/events",
+        headers={**headers, "Idempotency-Key": str(uuid.uuid4())},
+        json={"event_type": "wedding", "title": "Incomplete quota test"},
+    )
+    event_id = event.get_json()["data"]["id"]
+
+    first = client.post(f"{API}/events/{event_id}/intake", headers=headers, json={"description": "Outdoor wedding."})
+    assert first.status_code == 502
+    assert first.get_json()["error"]["code"] == "ai_incomplete"
+    assert provider.calls == 1
+
+    blocked = client.post(
+        f"{API}/events/{event_id}/intake",
+        headers={**headers, "Idempotency-Key": str(uuid.uuid4())},
+        json={"description": "Outdoor wedding."},
+    )
+    assert blocked.status_code == 429
+    assert blocked.get_json()["error"]["code"] == "ai_daily_limit"
+    assert provider.calls == 1
+    with app.app_context():
+        bucket = db.session.query(AIQuotaBucket).one()
+        usage = db.session.query(AIUsageRecord).one()
+        assert bucket.reserved_count == 1
+        assert usage.status == "incomplete"

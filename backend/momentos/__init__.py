@@ -161,7 +161,7 @@ def create_app(overrides: dict[str, object] | None = None) -> Flask:
         response = jsonify(body)
         response.status_code = status
         if status == 429:
-            response.headers["Retry-After"] = "60"
+            response.headers["Retry-After"] = str(error.retry_after_seconds or 60)
         return response
 
     @app.errorhandler(ValidationError)
