@@ -363,6 +363,9 @@ img { display: block; max-width: 100%; }
 .add-vendor-form p { color: var(--muted-ink); }
 .vendor-overview-art > span { color: var(--muted-ink); }
 .vendor-identity em.provenance-user { color: #536d52; }
+.vendor-follow-up-guidance { margin-top: 6px; color: var(--muted-ink); font-size: 0.75rem; line-height: 1.45; }
+.vendor-follow-up-guidance > strong { display: block; font-size: 0.75rem; }
+.vendor-follow-up-guidance ul { display: grid; gap: 2px; margin: 3px 0 0; padding-left: 16px; }
 
 .scenario-disclosure p,
 .scenario-input-panel p:not(.eyebrow),

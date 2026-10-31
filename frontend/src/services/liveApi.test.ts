@@ -45,7 +45,11 @@ const eventResponse = {
       {
         logical_id: 'venue-vendor', category: 'venue', display_name: 'Garden venue',
         contact_name: 'Asha', status: 'shortlisted_by_user', information_source: 'user_entered',
-        quotes: [{ amount_minor: 12_000_000 }],
+        quotes: [
+          { amount_minor: 9_000_000, created_at: '2026-10-01T10:00:00Z' },
+          { amount_minor: 12_000_000, created_at: '2026-10-02T10:00:00Z' },
+        ],
+        follow_up_checklist: ['Confirm access hours', 'Ask about setup needs'],
       },
     ],
   },
@@ -69,7 +73,7 @@ describe('typed live API adapter', () => {
       priorities: ['good food', 'live music'],
       categories: [{ id: 'food', plannedMinor: 15_000_000, provenance: 'user_entered' }],
       tasks: [{ id: 'venue', status: 'blocked', priority: 'high', dependencies: ['date'] }],
-      vendors: [{ id: 'venue-vendor', status: 'shortlisted', quoteMinor: 12_000_000 }],
+      vendors: [{ id: 'venue-vendor', status: 'shortlisted', quoteMinor: 12_000_000, followUpChecklist: ['Confirm access hours', 'Ask about setup needs'] }],
     });
     expect(requestMock).toHaveBeenCalledWith('/events/event-1?include=summary');
   });
@@ -81,8 +85,8 @@ describe('typed live API adapter', () => {
       unknowns: ['Venue capacity'],
       budget_categories: [{ key: 'food', name: 'Catering', planned_minor: 15_000_000, source: 'accepted_ai_suggestion' }],
       budget_items: [{ category_key: 'food', label: 'Dinner', quantity: 150, quantity_basis: 'guest_count', planned_minor: 15_000_000 }],
-      tasks: [{ key: 'book-venue', title: 'Book a venue', status: 'not_started', priority: 'medium', depends_on_keys: [] }],
-      vendor_categories: [{ key: 'caterer', category: 'catering', why: 'Meal service' }],
+      tasks: [{ key: 'book-venue', title: 'Book a venue', status: 'not_started', priority: 'medium', depends_on_keys: [], relative_timing_suggestion: 'Start venue visits early in the planning process.' }],
+      vendor_categories: [{ key: 'caterer', category: 'catering', why: 'Meal service', follow_up_checklist: ['Ask about dietary options', 'Confirm service hours'] }],
       ideas: ['Use seasonal flowers.'],
       ai_status: { mode: 'live' },
     });
@@ -94,13 +98,46 @@ describe('typed live API adapter', () => {
       concept: 'An intimate garden celebration.',
       aiStatus: 'live',
       budgetItems: [{ label: 'Dinner', quantity: 150, plannedMinor: 15_000_000 }],
-      tasks: [{ id: 'book-venue', status: 'not_started' }],
+      tasks: [{ id: 'book-venue', status: 'not_started', dueLabel: 'Suggested timing: Start venue visits early in the planning process.', relativeTimingSuggestion: 'Start venue visits early in the planning process.' }],
+      vendors: [{ id: 'caterer', followUpChecklist: ['Ask about dietary options', 'Confirm service hours'] }],
       ideas: ['Use seasonal flowers.'],
     });
     expect(requestMock.mock.calls.map(([path]) => path)).toEqual([
       '/events/event-1?include=summary',
       '/events/event-1/plan-drafts',
     ]);
+  });
+
+  it('keeps actual task dates ahead of relative timing guidance', async () => {
+    const eventWithDates = {
+      ...structuredClone(eventResponse),
+      timezone: 'Asia/Kolkata',
+      summary: {
+        ...structuredClone(eventResponse.summary),
+        timezone: 'Asia/Kolkata',
+        tasks: [
+          {
+            logical_id: 'local-date', title: 'Confirm venue', status: 'not_started',
+            due_local_date: '2027-04-10', due_at: '2027-04-10T12:00:00Z',
+            relative_timing_suggestion: 'Before invitations',
+          },
+          {
+            logical_id: 'timestamp', title: 'Send invitations', status: 'not_started',
+            due_at: '2027-04-10T12:00:00Z', relative_timing_suggestion: 'After the venue is booked',
+          },
+        ],
+      },
+    };
+    respondWith(eventWithDates);
+
+    const result = await liveApi.getEvent('event-1');
+
+    expect(result.data.tasks[0]).toMatchObject({
+      dueLabel: '2027-04-10',
+      relativeTimingSuggestion: 'Before invitations',
+    });
+    expect(result.data.tasks[1]?.dueLabel).toMatch(/^Scheduled: /);
+    expect(result.data.tasks[1]?.dueLabel).not.toContain('After the venue is booked');
   });
 
   it('maps scenario warnings and capacity states through typed DTOs', async () => {
@@ -141,6 +178,64 @@ describe('typed live API adapter', () => {
     expect(JSON.parse(String(requestMock.mock.calls[0]?.[1]?.body))).toEqual({
       status: 'contacted_by_user', notes: 'Called on Monday.',
     });
+  });
+
+  it('creates a quote with the existing versioned endpoint and verifies the latest saved value after reload', async () => {
+    respondWith(
+      { id: 'quote-new', amount_minor: 1_250_050, currency: 'INR', created_at: '2026-10-03T10:00:00Z' },
+      {
+        ...eventResponse,
+        summary: {
+          ...eventResponse.summary,
+          vendors: [{
+            ...eventResponse.summary.vendors[0],
+            quotes: [
+              { amount_minor: 1_250_050, created_at: '2026-10-03T10:00:00Z' },
+              { amount_minor: 12_000_000, created_at: '2026-10-02T10:00:00Z' },
+            ],
+          }],
+        },
+      },
+    );
+
+    const result = await liveApi.saveVendorQuote('event-1', 'venue-vendor', 1_250_050, 'INR');
+
+    expect(result.data.vendors[0]).toMatchObject({ id: 'venue-vendor', quoteMinor: 1_250_050 });
+    const [path, init] = requestMock.mock.calls[0]!;
+    expect(path).toBe('/events/event-1/vendors/venue-vendor/quotes');
+    expect(init?.method).toBe('POST');
+    expect(JSON.parse(String(init?.body))).toEqual({
+      amount_minor: 1_250_050,
+      currency: 'INR',
+      scope_note: 'User-entered vendor quote',
+    });
+    const headers = new Headers(init?.headers);
+    expect(headers.get('If-Match')).toBe('"event-v1"');
+    expect(headers.get('Idempotency-Key')).toBeTruthy();
+    expect(requestMock.mock.calls[1]?.[0]).toBe('/events/event-1?include=summary');
+  });
+
+  it('does not report a quote saved when quote persistence fails and reuses the idempotency key on retry', async () => {
+    requestMock.mockImplementationOnce(async () => { throw new Error('request failed'); });
+    respondWith(
+      { id: 'quote-new', amount_minor: 1_250_050, currency: 'INR', created_at: '2026-10-03T10:00:00Z' },
+      {
+        ...eventResponse,
+        summary: {
+          ...eventResponse.summary,
+          vendors: [{ ...eventResponse.summary.vendors[0], quotes: [{ amount_minor: 1_250_050, created_at: '2026-10-03T10:00:00Z' }] }],
+        },
+      },
+    );
+    await expect(liveApi.saveVendorQuote('event-1', 'venue-vendor', 1_250_050, 'INR')).rejects.toThrow('request failed');
+    await expect(liveApi.saveVendorQuote('event-1', 'venue-vendor', 1_250_050, 'INR')).resolves.toMatchObject({
+      data: { vendors: [{ quoteMinor: 1_250_050 }] },
+    });
+
+    const firstHeaders = new Headers(requestMock.mock.calls[0]?.[1]?.headers);
+    const retryHeaders = new Headers(requestMock.mock.calls[1]?.[1]?.headers);
+    expect(firstHeaders.get('Idempotency-Key')).toBe(retryHeaders.get('Idempotency-Key'));
+    expect(requestMock.mock.calls[2]?.[0]).toBe('/events/event-1?include=summary');
   });
 
   it('returns the created vendor from Flask instead of guessing from event ordering', async () => {

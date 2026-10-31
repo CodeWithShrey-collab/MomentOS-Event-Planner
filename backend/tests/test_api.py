@@ -5,9 +5,11 @@ from __future__ import annotations
 import sys
 import uuid
 from pathlib import Path
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 import pytest
+from sqlalchemy import select
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
@@ -19,6 +21,7 @@ from momentos import api as api_module  # noqa: E402
 from momentos.ai_provider import AIIncomplete, AIUsage  # noqa: E402
 from momentos.ai_schemas import CopilotAnswer, EventBlueprint  # noqa: E402
 from momentos.extensions import db  # noqa: E402
+from momentos.models import Event, EventPlanVersion, VendorQuote
 
 
 API = "/api/v1"
@@ -243,6 +246,8 @@ def test_offline_plan_is_explicit_and_requires_commit(client) -> None:
     assert saved.status_code == 200
     assert saved.get_json()["data"]["summary"]["guest_count"] == 150
     assert saved.get_json()["data"]["summary"]["currency"] == "INR"
+    assert all(task["relative_timing_suggestion"] is None for task in saved.get_json()["data"]["summary"]["tasks"])
+    assert all(vendor["follow_up_checklist"] == [] for vendor in saved.get_json()["data"]["summary"]["vendors"])
 
 
 def test_mocked_live_blueprint_is_transformed_saved_and_reloaded(app, client, monkeypatch) -> None:
@@ -275,14 +280,19 @@ def test_mocked_live_blueprint_is_transformed_saved_and_reloaded(app, client, mo
             "owner": None,
             "status": "not_started",
         }],
-        "vendor_categories": [],
+        "vendor_categories": [{
+            "key": "catering",
+            "category": "Catering",
+            "why": "Food service for the guest group.",
+            "follow_up_checklist": ["Confirm dietary requirements", "Request a written quote"],
+        }],
         "ideas": [],
         "warnings": [],
     })
     usage = AIUsage(
         operation="generate_event_blueprint", model="gpt-6-luna", reasoning_effort="medium",
         status="success", request_id="req_mocked", input_tokens=120, output_tokens=300,
-        total_tokens=420, elapsed_ms=20, estimated_cost_usd=Decimal("0"), pricing_version="test",
+        total_tokens=420, elapsed_ms=20, estimated_cost_usd=Decimal(0), pricing_version="test",
     )
 
     class MockProvider:
@@ -318,6 +328,10 @@ def test_mocked_live_blueprint_is_transformed_saved_and_reloaded(app, client, mo
     assert draft["ai_status"] == {"mode": "mock", "generated_by": "Mock Responses API provider (no live OpenAI request)", "model": "gpt-6-luna"}
     assert draft["budget_categories"][0]["planned_minor"] == 8_000_000
     assert draft["tasks"][0]["status"] == "not_started"
+    assert draft["tasks"][0]["relative_timing_suggestion"] == "After selecting a venue"
+    assert draft["vendor_categories"][0]["follow_up_checklist"] == [
+        "Confirm dietary requirements", "Request a written quote",
+    ]
     unchanged = client.get(f"{API}/events/{event['id']}?include=summary").get_json()["data"]
     assert unchanged["current_version_no"] is None
     assert unchanged["summary"] is None
@@ -333,6 +347,80 @@ def test_mocked_live_blueprint_is_transformed_saved_and_reloaded(app, client, mo
     assert saved["summary"]["guest_count"] == 50
     assert saved["summary"]["budget_categories"][0]["planned_minor"] == 8_000_000
     assert saved["summary"]["tasks"][0]["title"] == "Confirm venue capacity"
+    assert saved["summary"]["tasks"][0]["relative_timing_suggestion"] == "After selecting a venue"
+    assert saved["summary"]["vendors"][0]["follow_up_checklist"] == [
+        "Confirm dietary requirements", "Request a written quote",
+    ]
+
+    task_id = saved["summary"]["tasks"][0]["logical_id"]
+    vendor_id = saved["summary"]["vendors"][0]["logical_id"]
+    task_update = client.patch(
+        f"{API}/events/{event['id']}/tasks/{task_id}",
+        headers=mutation_headers(csrf, etag=commit_response.headers["ETag"], key=str(uuid.uuid4())),
+        json={"status": "in_progress"},
+    )
+    assert task_update.status_code == 200, task_update.get_json()
+    vendor_update = client.patch(
+        f"{API}/events/{event['id']}/vendors/{vendor_id}",
+        headers=mutation_headers(csrf, etag=task_update.headers["ETag"], key=str(uuid.uuid4())),
+        json={"display_name": "User-edited catering contact"},
+    )
+    assert vendor_update.status_code == 200, vendor_update.get_json()
+    edited = client.get(f"{API}/events/{event['id']}?include=summary").get_json()["data"]["summary"]
+    assert edited["tasks"][0]["status"] == "in_progress"
+    assert edited["tasks"][0]["relative_timing_suggestion"] == "After selecting a venue"
+    assert edited["vendors"][0]["display_name"] == "User-edited catering contact"
+    assert edited["vendors"][0]["follow_up_checklist"] == [
+        "Confirm dietary requirements", "Request a written quote",
+    ]
+
+
+def test_vendor_quotes_reload_newest_first(client, app) -> None:
+    csrf = create_session(client)
+    event_id, _, _ = create_offline_wedding_plan(client, csrf, include_tasks=False)
+    saved = client.get(f"{API}/events/{event_id}?include=summary").get_json()["data"]["summary"]
+    vendor_id = saved["vendors"][0]["logical_id"]
+
+    with app.app_context():
+        event = db.session.get(Event, event_id)
+        assert event is not None
+        version = db.session.scalar(select(EventPlanVersion).where(
+            EventPlanVersion.event_id == event_id,
+            EventPlanVersion.version_no == event.current_plan_version_no,
+        ))
+        assert version is not None
+        version_id = version.id
+        earlier = datetime(2026, 10, 1, tzinfo=UTC)
+        db.session.add_all([
+            VendorQuote(
+                event_version_id=version_id, logical_id=str(uuid.uuid4()), vendor_id=vendor_id,
+                amount_minor=125_000, currency="INR", scope_note="Earlier quote",
+                source="user_entered", status="received_by_user", created_at=earlier,
+            ),
+            VendorQuote(
+                event_version_id=version_id, logical_id=str(uuid.uuid4()), vendor_id=vendor_id,
+                amount_minor=150_000, currency="INR", scope_note="Latest quote",
+                source="user_entered", status="received_by_user", created_at=earlier + timedelta(days=1),
+            ),
+        ])
+        db.session.commit()
+
+    current = client.get(f"{API}/events/{event_id}?include=summary")
+    reloaded = current.get_json()["data"]["summary"]
+    quotes = next(vendor for vendor in reloaded["vendors"] if vendor["logical_id"] == vendor_id)["quotes"]
+    assert [quote["amount_minor"] for quote in quotes] == [150_000, 125_000]
+    assert quotes[0]["created_at"] is not None
+
+    vendor_update = client.patch(
+        f"{API}/events/{event_id}/vendors/{vendor_id}",
+        headers=mutation_headers(csrf, etag=current.headers["ETag"], key=str(uuid.uuid4())),
+        json={"display_name": "Updated vendor"},
+    )
+    assert vendor_update.status_code == 200, vendor_update.get_json()
+    after_edit = client.get(f"{API}/events/{event_id}?include=summary").get_json()["data"]["summary"]
+    quotes_after_edit = next(vendor for vendor in after_edit["vendors"] if vendor["logical_id"] == vendor_id)["quotes"]
+    assert [quote["amount_minor"] for quote in quotes_after_edit] == [150_000, 125_000]
+    assert quotes_after_edit[0]["created_at"] == quotes[0]["created_at"]
 
 
 def test_incomplete_live_blueprint_returns_sanitized_recoverable_error(app, client, monkeypatch) -> None:

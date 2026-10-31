@@ -34,6 +34,7 @@ async function createWedding(page: import('@playwright/test').Page, note = 'User
   await expect(page.getByText('Mock provider · no live request')).toBeVisible();
   await expect(page.getByText('Catering per guest')).toBeVisible();
   await expect(page.getByText('Confirm venue capacity')).toBeVisible();
+  await expect(page.getByText('Suggested: Before invitations')).toBeVisible();
   await page.getByRole('button', { name: /save this plan/i }).click();
   const dialog = page.getByRole('alertdialog');
   await expect(dialog).toContainText('structured mock response for testing');
@@ -58,12 +59,18 @@ test('real React-to-Flask wedding flow uses validated mocked provider output and
   await expect(page.getByText(/150 guests/).first()).toBeVisible();
   const savedEventResponse = await page.evaluate(async (id) => {
     const response = await fetch(`/api/v1/events/${encodeURIComponent(id)}?include=summary`, { credentials: 'include' });
-    return { status: response.status, body: await response.json() as { data: { summary: { budget_items: Array<{ label: string; quantity: string; quantity_basis: string; unit_rate_minor: number; planned_minor: number }> } } } };
+    return { status: response.status, body: await response.json() as { data: { summary: { budget_items: Array<{ label: string; quantity: string; quantity_basis: string; unit_rate_minor: number; planned_minor: number }>; tasks: Array<{ logical_id: string; relative_timing_suggestion?: string | null }>; vendors: Array<{ logical_id: string; category: string; follow_up_checklist?: string[]; quotes: Array<{ amount_minor: number; currency: string; created_at?: string }> }> } } } };
   }, eventId);
   expect(savedEventResponse.status).toBe(200);
   const savedEvent = savedEventResponse.body.data;
   expect(savedEvent.summary.budget_items).toEqual(expect.arrayContaining([
     expect.objectContaining({ label: 'Catering per guest', quantity: '150.000', quantity_basis: 'guest_count', unit_rate_minor: 100_000, planned_minor: 15_000_000 }),
+  ]));
+  expect(savedEvent.summary.tasks).toEqual(expect.arrayContaining([
+    expect.objectContaining({ title: 'Confirm venue capacity', relative_timing_suggestion: 'Before invitations' }),
+  ]));
+  expect(savedEvent.summary.vendors).toEqual(expect.arrayContaining([
+    expect.objectContaining({ category: 'catering', follow_up_checklist: ['Record the contact and user-entered quotation.'] }),
   ]));
 
   await page.getByRole('link', { name: /Budget studio/i }).click();
@@ -99,6 +106,7 @@ test('real React-to-Flask wedding flow uses validated mocked provider output and
   await expect(page.getByText('Current plan: 200 guests')).toBeVisible();
 
   await page.getByRole('link', { name: /Moment map/i }).click();
+  await expect(page.getByText('Suggested timing: Before invitations')).toBeVisible();
   const taskButton = page.getByRole('button', { name: /^Mark complete:/i }).first();
   await taskButton.click();
   await expect(page.getByText('Task status updated')).toBeVisible();
@@ -108,6 +116,21 @@ test('real React-to-Flask wedding flow uses validated mocked provider output and
   await vendorStatus.selectOption('contacted');
   await expect(page.getByText('Vendor details saved')).toBeVisible();
   await expect(vendorStatus).toHaveValue('contacted');
+  const cateringVendorRow = page.locator('.vendor-row').filter({ hasText: 'catering' });
+  await expect(cateringVendorRow.getByText('Record the contact and user-entered quotation.')).toBeVisible();
+  const quoteInput = cateringVendorRow.getByPlaceholder('Add quote');
+  await quoteInput.fill('12500.50');
+  await quoteInput.press('Tab');
+  await expect(page.getByText('Vendor quote saved')).toBeVisible();
+  const quoteReadback = await page.evaluate(async (id) => {
+    const response = await fetch(`/api/v1/events/${encodeURIComponent(id)}?include=summary`, { credentials: 'include' });
+    const payload = await response.json() as { data: { summary: { vendors: Array<{ category: string; quotes: Array<{ amount_minor: number; currency: string }> }> } } };
+    return { status: response.status, vendor: payload.data.summary.vendors.find((item) => item.category === 'catering') };
+  }, eventId);
+  expect(quoteReadback.status).toBe(200);
+  expect(quoteReadback.vendor?.quotes[0]).toMatchObject({ amount_minor: 1_250_050, currency: 'INR' });
+  await page.reload();
+  await expect(page.locator('.vendor-row').filter({ hasText: 'catering' }).getByPlaceholder('Add quote')).toHaveValue('12500.5');
 
   await page.getByRole('link', { name: 'Compare plans', exact: true }).click();
   await page.getByLabel('Option one').fill('130');

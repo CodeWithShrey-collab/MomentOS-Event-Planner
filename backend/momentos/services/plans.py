@@ -97,7 +97,11 @@ def snapshot(event: Event, version: EventPlanVersion | None = None) -> dict[str,
     tasks = db.session.scalars(select(Task).where(Task.event_version_id == version.id).order_by(Task.due_at, Task.logical_id)).all()
     dependencies = db.session.scalars(select(TaskDependency).where(TaskDependency.event_version_id == version.id).order_by(TaskDependency.task_id, TaskDependency.depends_on_task_id)).all()
     vendors = db.session.scalars(select(Vendor).where(Vendor.event_version_id == version.id).order_by(Vendor.logical_id)).all()
-    quotes = db.session.scalars(select(VendorQuote).where(VendorQuote.event_version_id == version.id).order_by(VendorQuote.logical_id)).all()
+    quotes = db.session.scalars(
+        select(VendorQuote)
+        .where(VendorQuote.event_version_id == version.id)
+        .order_by(VendorQuote.created_at.desc(), VendorQuote.logical_id.desc())
+    ).all()
     quote_map: dict[str, list[dict[str, Any]]] = {}
     for quote in quotes:
         quote_map.setdefault(quote.vendor_id, []).append({
@@ -105,6 +109,7 @@ def snapshot(event: Event, version: EventPlanVersion | None = None) -> dict[str,
             "quote_date": quote.quote_date.isoformat() if quote.quote_date else None,
             "valid_until": quote.valid_until.isoformat() if quote.valid_until else None,
             "scope_note": quote.scope_note, "source": quote.source, "status": quote.status,
+            "created_at": iso_utc(quote.created_at),
         })
     return {
         "event_id": event.id,
@@ -140,6 +145,7 @@ def snapshot(event: Event, version: EventPlanVersion | None = None) -> dict[str,
             "due_at": iso_utc(row.due_at),
             "due_local_date": row.due_local_date.isoformat() if row.due_local_date else None,
             "phase": row.phase, "priority": row.priority, "source": row.source,
+            "relative_timing_suggestion": row.relative_timing_suggestion,
             "vendor_id": row.vendor_id, "completed_at": iso_utc(row.completed_at),
             "completion_source": row.completion_source,
             "completed_by_session_id": row.completed_by_session_id,
@@ -151,6 +157,7 @@ def snapshot(event: Event, version: EventPlanVersion | None = None) -> dict[str,
             "contact_name": row.contact_name, "email": row.email, "phone": row.phone,
             "location_note": row.location_note, "status": row.status,
             "information_source": row.information_source, "notes": row.notes,
+            "follow_up_checklist": row.follow_up_checklist or [],
             "quotes": quote_map.get(row.logical_id, []),
         } for row in vendors],
     }
@@ -414,6 +421,9 @@ def _build_tasks(
             task_type=row.get("task_type", "task"), status=status, owner_label=row.get("owner_label"),
             due_at=_parse_datetime(row.get("due_at")), due_local_date=_parse_date(row.get("due_local_date")),
             phase=str(row.get("phase") or "before_event")[:80], priority=row.get("priority", "medium"),
+            relative_timing_suggestion=_optional_plan_text(
+                row.get("relative_timing_suggestion"), "relative_timing_suggestion", 160,
+            ),
             source=_source(row.get("source", ai_status)),
             vendor_id=row.get("vendor_id"),
             completion_source="user" if completed else None,
@@ -476,6 +486,7 @@ def _build_vendor(row: dict[str, Any], version: EventPlanVersion, vendor_id: str
         status=row.get("status", "to_find"),
         information_source="user_entered" if row.get("information_source") == "user_entered" or row.get("display_name") else "checklist_suggestion",
         notes=str(row.get("notes") or row.get("why") or row.get("rationale") or "")[:1200] or None,
+        follow_up_checklist=_bounded_text_list(row.get("follow_up_checklist"), "follow_up_checklist", 15, 160),
     )
 
 
@@ -487,13 +498,17 @@ def _persist_vendor_quotes(
             continue
         if quote.get("currency", currency) != currency:
             raise ApiError(422, "validation_failed", "Vendor quote currency must match the event currency.")
-        db.session.add(VendorQuote(
+        quote_created_at = _parse_datetime(quote.get("created_at"))
+        quote_record = VendorQuote(
             event_version_id=version.id, logical_id=_uuid_value(quote.get("logical_id") or quote.get("id")),
             vendor_id=vendor_id, amount_minor=_nonnegative(quote.get("amount_minor", 0)), currency=currency,
             quote_date=_parse_date(quote.get("quote_date")), valid_until=_parse_date(quote.get("valid_until")),
             scope_note=str(quote.get("scope_note") or "User-entered quotation")[:600],
             source="user_entered", status=quote.get("status", "received_by_user"),
-        ))
+        )
+        if quote_created_at is not None:
+            quote_record.created_at = quote_created_at
+        db.session.add(quote_record)
 
 
 def _build_vendors(plan: dict[str, Any], version: EventPlanVersion, currency: str) -> list[Vendor]:
@@ -636,6 +651,31 @@ def _safe_json_object(value: Any, field: str) -> dict[str, Any]:
     if len(encoded) > 12_000:
         raise ApiError(422, "validation_failed", f"{field} is too large.")
     return value
+
+
+def _optional_plan_text(value: Any, field: str, max_length: int) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ApiError(422, "validation_failed", f"{field} must be text.")
+    normalized = value.strip()
+    if len(normalized) > max_length:
+        raise ApiError(422, "validation_failed", f"{field} exceeds the supported length.")
+    return normalized or None
+
+
+def _bounded_text_list(value: Any, field: str, max_items: int, max_length: int) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, list) or len(value) > max_items:
+        raise ApiError(422, "validation_failed", f"{field} must be a bounded list.")
+    items: list[str] = []
+    for item in value:
+        normalized = _optional_plan_text(item, field, max_length)
+        if normalized is None:
+            raise ApiError(422, "validation_failed", f"{field} items cannot be empty.")
+        items.append(normalized)
+    return items
 
 
 def _item_status(value: Any) -> str:

@@ -24,6 +24,8 @@ export interface EventTask {
   owner: string | null;
   dependencies: string[];
   categoryId?: string;
+  /** AI guidance only; this is not a confirmed calendar date. */
+  relativeTimingSuggestion?: string | null;
 }
 
 export interface Vendor {
@@ -36,6 +38,8 @@ export interface Vendor {
   quoteMinor: number | null;
   provenance: Provenance;
   note: string;
+  /** Suggested follow-up steps from the planning blueprint. */
+  followUpChecklist?: string[];
 }
 
 export interface EventRecord {

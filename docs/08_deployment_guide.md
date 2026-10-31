@@ -1,9 +1,11 @@
 # Stage 08 — Production Deployment Guide
 
-**Status:** source code is published at [GitHub](https://github.com/CodeWithShrey-collab/MomentOS-Event-Planner). Deployment configuration is prepared; no cloud resources or public application deployment have been created.
+**Status:** This is a historical record of the initial paid-hosting evaluation prepared on 2026-10-31; it is not the active deployment guide. MomentOS is now deployed at [https://momentos-event-planner-free.onrender.com](https://momentos-event-planner-free.onrender.com) using the separate free-service configuration with Neon PostgreSQL and Upstash Redis. On 2026-11-01, the public readiness endpoint returned HTTP 200 with PostgreSQL and Redis ready and AI configured. The exact deployed source SHA and several production workflows remain unverified. For the current architecture, use [`docs/08_free_deployment_guide.md`](08_free_deployment_guide.md).
 **Checked against provider documentation:** 2026-10-31. Pricing and plan limits can change; recheck the dashboards before provisioning.
 
-## Recommended architecture
+## Architecture evaluated during the original deployment preparation
+
+The following sections preserve the earlier paid Render deployment evaluation. They describe options and configuration considered at that time, not the resources currently serving the public application.
 
 Use one Render Docker web service in Singapore. The image compiles the React/Vite client and runs it with Flask/Gunicorn; Flask serves the SPA and `/api/v1` from the same HTTPS origin. Use a private Render PostgreSQL database for durable event data and a private Render Key Value service for shared Flask-Limiter counters. The model stays `gpt-6-luna`; provider calls remain server-side.
 
@@ -114,4 +116,4 @@ The local Docker Engine was not available during this preparation session, so no
 
 ## Current readiness
 
-Local app serving and prior frontend/backend suites are verified. The production startup configuration and deployment manifest are prepared and have targeted tests. The Render hop-count blocker is resolved through zero `ProxyFix` trust and a Render-documented Cloudflare client-IP header for rate limiting. No deployment, public URL, production PostgreSQL test, deployed TLS/cookie verification, or full live-browser AI run has happened; those remain outstanding release checks.
+This document preserves the earlier paid-blueprint deployment plan; it is not the active free deployment manifest. The public application is deployed at [https://momentos-event-planner-free.onrender.com](https://momentos-event-planner-free.onrender.com) using the separate `render-free.yaml` configuration. On 2026-11-01, its readiness endpoint returned HTTP 200 with PostgreSQL and Redis ready and AI configured. The exact Render source SHA, production persistence across restart, deployed TLS/cookie behavior, production proxy identity, and a full live-browser AI workflow remain unverified. Use `docs/08_free_deployment_guide.md` for the current service architecture; do not import `render.yaml` for the free service.

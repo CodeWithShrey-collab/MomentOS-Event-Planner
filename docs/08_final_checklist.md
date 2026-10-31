@@ -1,6 +1,6 @@
 # Stage 08 — Final Release Checklist
 
-**Current status:** the source repository is public at [https://github.com/CodeWithShrey-collab/MomentOS-Event-Planner](https://github.com/CodeWithShrey-collab/MomentOS-Event-Planner). The app is not deployed. Paid resource provisioning, video upload, LinkedIn posting, and competition submission have not been performed.
+**Current status (2026-11-01):** the source repository is public at [https://github.com/CodeWithShrey-collab/MomentOS-Event-Planner](https://github.com/CodeWithShrey-collab/MomentOS-Event-Planner), and the application is deployed at [https://momentos-event-planner-free.onrender.com](https://momentos-event-planner-free.onrender.com). The public readiness endpoint returned HTTP 200 with PostgreSQL and Redis ready and AI configured. The exact Render source SHA is not confirmed. The local vendor-quotation and planning-guidance corrections described in this release are not pushed or deployed. This checklist is not a record of previous competition form entries; the project owner reports that Attempts 1 and 2 have been evaluated.
 
 ## Local preparation completed
 
@@ -13,7 +13,7 @@
 - [x] README screenshots copied from verified Stage 07 browser captures; no screenshot is represented as a live-AI result.
 - [x] `docs/08_publication_manifest.txt` lists intended public files exactly; private `context.md` and local `.env` are excluded.
 - [x] Published source set is **2.10 MiB across 95 files**, well below 10 MB; the local Git object store measured **1.45 MiB** at publication.
-- [x] Submission text, demo script, LinkedIn draft, and deployment guide prepared with explicit URL placeholders.
+- [x] Submission text, demo script, LinkedIn draft, and deployment guide prepared; the public app URL is recorded where verified, while unpublished video and LinkedIn URLs remain placeholders.
 
 ## Local verification and environment facts
 
@@ -38,15 +38,14 @@
 - [x] Published repository and local Git object store verified below 10 MB.
 - [ ] Select and add a license if desired; none has been added.
 
-## Paid deployment (requires authorization)
+## Existing free deployment and remaining checks
 
-- [ ] User approves Render and the current estimated minimum of about **$23 USD/month** for the prepared app, Postgres, and Key Value plans, subject to live prices and storage/egress charges.
-- [ ] User approves creation of one always-on web service, one PostgreSQL database, and one Key Value service.
-- [ ] Confirm live dashboard totals, billing/spend controls, region (Singapore), plan size, disk size, and retention before provisioning.
-- [ ] Enter the currently rotated OpenAI API key only in Render's secret UI; never put it in the Blueprint, Git, issue, chat, or video.
-- [ ] Confirm production values and the public Render Cloudflare ingress before first launch; keep all `PROXY_FIX_X_*` values at `0`.
-- [ ] Run the deployment checklist in `docs/08_deployment_guide.md`, including the full public HTTPS browser journey and restart persistence.
-- [ ] Add the deployment URL only after all production checks pass.
+- [x] One Render Free Docker web service is publicly reachable at `https://momentos-event-planner-free.onrender.com`; no duplicate service was created for this release.
+- [x] Readiness on 2026-11-01 reported PostgreSQL ready, Redis ready, and AI configured. This check verifies dependency reachability/schema and configuration, not every application workflow.
+- [ ] Verify the exact Render deployed Git SHA through the service dashboard or authorized Render API.
+- [ ] After the current local fixes are approved and released, verify the deployed build and the vendor quote/timing/follow-up flows.
+- [ ] Verify persisted event changes across a controlled service restart, deployed cookie/CSRF behavior, and production proxy identity before claiming those checks.
+- [ ] Keep production secrets in Render's secret environment only; never place them in the Blueprint, Git, issue, chat, or video.
 
 ## Video, LinkedIn, and competition form (each requires authorization)
 
@@ -54,13 +53,12 @@
 - [ ] Review recording for personal data, secrets, and mocked-success indicators.
 - [ ] Obtain authorization before public or link-accessible video upload; verify the URL signed out.
 - [ ] Obtain authorization before posting the LinkedIn draft; verify linked URLs.
-- [ ] Submit the competition form only after repository, deployment, and video URLs are public and verified; double-check each text field remains within 1,024 characters.
+- [ ] Use the remaining competition attempt only after repository, deployed release, and video URLs are public and verified; double-check each text field remains within 1,024 characters. No new attempt is submitted by this work.
 - [ ] Do not claim a competition result, award, or score that has not been announced and independently verified.
 
 ## Release blockers at handoff
 
-1. No production resources or deployment exist; authorization is needed before paid provisioning/public deployment.
-2. Production PostgreSQL and image build were not tested in this environment; verify them before release.
-3. Proxy header trust, secure cookies, CSRF, persistent data through restart, and production session isolation require deployment verification.
-4. Full live-browser AI has not been verified; only Stage 06's live blueprint/save/reload and mocked-provider browser workflows are verified.
-5. Demo video, LinkedIn post, and competition submission URLs do not yet exist; recording/upload/posting/submission require explicit authorization.
+1. The precise Render source SHA is unavailable; the deployed frontend bundle was previously matched to the local pre-correction build, while the current code corrections remain local.
+2. Readiness confirms PostgreSQL and Redis reachability, but persistent writes across restart, migration history, TLS/cookie behavior, and production session isolation still need controlled verification.
+3. A complete live-browser GPT-6 Luna journey remains unverified; browser tests use mocked provider responses.
+4. The demo-video and LinkedIn URLs remain placeholders in this project. Publishing either, or using the final competition attempt, requires the project owner's explicit action.

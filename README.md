@@ -8,7 +8,7 @@ MomentOS is an AI-powered planning workspace for weddings, birthdays, and commun
 
 ![React](https://img.shields.io/badge/React-19-149ECA?logo=react&logoColor=white) ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white) ![Flask](https://img.shields.io/badge/Flask-3.0-111827?logo=flask&logoColor=white) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Neon-4169E1?logo=postgresql&logoColor=white) ![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)
 
-> **Live deployment:** The public Render Free application is available at the link above. It is configured as a same-origin Flask + React service with Neon PostgreSQL and Upstash Redis. On 2026-10-31, `/api/v1/health/ready` reported the database and rate-limit store ready and AI configured. Render Free can sleep when idle, so the first request may take longer. This point-in-time check is not an uptime guarantee or an end-to-end live AI workflow test.
+> **Live deployment:** The public Render Free application is available at the link above. It is configured as a same-origin Flask + React service with Neon PostgreSQL and Upstash Redis. On 2026-11-01, `/api/v1/health/ready` returned HTTP 200 and reported the database and rate-limit store ready and AI configured. Render Free can sleep when idle, so the first request may take longer. This point-in-time check is not an uptime guarantee or an end-to-end live AI workflow test. The functional corrections currently being prepared in this repository are local and are not part of the deployed release until separately published and deployed; the exact Render source SHA has not been confirmed.
 
 ## The planning problem
 
@@ -39,7 +39,7 @@ No fixed cost result is shown here because the outcome depends on the event's sa
 
 ## Screenshots
 
-These screenshots were captured from the local application using clearly labeled illustrative demo fixtures. They show the current repository's **Modern Editorial Studio** frontend and are not evidence of live AI output or production data. The deployed UI may lag this local visual revision until it is published and redeployed.
+These screenshots were captured from the local application using clearly labeled illustrative demo fixtures. They show the repository's **Modern Editorial Studio** frontend and are not evidence of live AI output or production data. Local source changes that have not been published and deployed are not reflected in the public application.
 
 | Landing | Event Architect |
 | --- | --- |
@@ -203,7 +203,7 @@ The public application URL is **[momentos-event-planner-free.onrender.com](https
 
 Free Render services can sleep after inactivity and use ephemeral local storage; event data belongs in PostgreSQL. Neon may also autosuspend. These behaviors can introduce cold-start delays. OpenAI usage is billed separately from hosting. The deployment configuration is [`render-free.yaml`](render-free.yaml); the default [`render.yaml`](render.yaml) is a separate paid blueprint and must not be imported for this free setup. See the [free deployment guide](docs/08_free_deployment_guide.md) and [deployment checklist](docs/08_free_deployment_checklist.md) for service configuration, migration startup, health checks, and limitations.
 
-On 2026-10-31, the deployed readiness endpoint reported PostgreSQL, Redis, and live-AI configuration ready. Stage 06 verified one real GPT-6 Luna blueprint → save → reload path in an isolated application check. A complete live production AI journey through blueprint generation and Copilot has not been verified; no uptime or production SLA is claimed.
+On 2026-11-01, the deployed readiness endpoint returned HTTP 200 and reported PostgreSQL ready, Redis ready, and AI configured. This dependency check does not verify persistence across a production restart. Stage 06 previously verified one real GPT-6 Luna blueprint → save → reload path in a controlled application check. A complete live production AI journey through blueprint generation and Copilot has not been verified; no uptime or production SLA is claimed. The current local vendor-quotation and planning-guidance corrections remain pending publication/deployment.
 
 ## Security
 

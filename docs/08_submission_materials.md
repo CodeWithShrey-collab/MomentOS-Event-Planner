@@ -1,6 +1,6 @@
 # PromptWars Challenge 5 — Submission Materials
 
-The source repository is public at [https://github.com/CodeWithShrey-collab/MomentOS-Event-Planner](https://github.com/CodeWithShrey-collab/MomentOS-Event-Planner). The app is not yet deployed; no public deployment URL, demo video, LinkedIn post, or competition form submission currently exists. Replace the remaining placeholders only with URLs that have been published and verified. Do not submit until the final checklist is complete.
+The source repository is public at [https://github.com/CodeWithShrey-collab/MomentOS-Event-Planner](https://github.com/CodeWithShrey-collab/MomentOS-Event-Planner), and the public application is [https://momentos-event-planner-free.onrender.com](https://momentos-event-planner-free.onrender.com). This file is a working draft, not a record of the text entered for earlier attempts. The project owner reports that Attempts 1 and 2 have been evaluated; no score or submission text is inferred from this document. The local quotation-persistence and planning-guidance fixes are not yet published or deployed. Keep the demo-video and LinkedIn fields as placeholders until their URLs are published and verified, and update the deployed-changes answer only after release verification.
 
 ## Submission fields
 
@@ -14,7 +14,9 @@ The source repository is public at [https://github.com/CodeWithShrey-collab/Mome
 
 ### 3. Project deployment URL
 
-**Pending authorization and verified production deployment:** `[PUBLIC_HTTPS_DEPLOYMENT_URL]`
+**Public application:** [https://momentos-event-planner-free.onrender.com](https://momentos-event-planner-free.onrender.com)
+
+The readiness endpoint returned HTTP 200 on 2026-11-01, with PostgreSQL and Redis ready and AI configured. This is a point-in-time dependency check, not proof of every production workflow. The exact Render source commit is not confirmed.
 
 ### 4. Project demo video URL
 
@@ -22,11 +24,11 @@ The source repository is public at [https://github.com/CodeWithShrey-collab/Mome
 
 ### 5. Description of changes/updates in the deployed version
 
-**Draft — confirm against the actual deployed release before submission (within the 1,024-character field limit):**
+**Draft — refresh after the local corrections are published and deployed, then verify against that release (within the 1,024-character field limit):**
 
-> MomentOS is an AI-powered planning workspace for weddings, birthdays, and community events. The deployed release connects a React and TypeScript interface to a Flask API with persistent PostgreSQL storage, secure guest sessions, CSRF protection, and version-checked updates. GPT-6 Luna helps interpret event briefs and generate structured planning ideas. The deterministic Python Ripple Engine previews budget, guest-count, capacity, and task impacts before a user confirms a change. The workspace includes a command center, budget studio, timeline, vendor checklist, contextual Copilot, and scenario comparison. Prices and vendor details are editable illustrative assumptions, not live quotations.
+> MomentOS is an AI-powered planning workspace for weddings, birthdays, and community events. The public application connects a React and TypeScript interface to a Flask API configured for Neon PostgreSQL, with secure guest sessions, CSRF protection, and version-checked updates. GPT-6 Luna helps interpret event briefs and generate structured planning ideas. The deterministic Python Ripple Engine previews budget, guest-count, capacity, and task impacts before confirmation. The workspace includes a command center, budget studio, timeline, vendor checklist, contextual Copilot, and scenario comparison. Vendor availability and planning prices are not independently verified. The repository now contains corrections for saving user-entered quotations and retaining generated timing/follow-up guidance; these changes must be deployed and verified before describing them as part of the live release.
 
-**Character count:** 721 including spaces and punctuation (excluding the Markdown quote marker). Recount after any edits.
+**Character count:** Recount after final deployment-specific edits; this draft is within the 1,024-character limit.
 
 ### 6. GenAI services utilized and where they were used
 
@@ -51,7 +53,7 @@ The source repository is public at [https://github.com/CodeWithShrey-collab/Mome
 > AI helps interpret the brief and explain options; the backend remains authoritative for calculations and saved changes. Vendor details and prices are illustrative unless entered and verified by the user.
 >
 > Project: https://github.com/CodeWithShrey-collab/MomentOS-Event-Planner
-> Try MomentOS: [PUBLIC_HTTPS_DEPLOYMENT_URL]
+> Try MomentOS: https://momentos-event-planner-free.onrender.com
 > Demo: [PUBLIC_DEMO_VIDEO_URL]
 >
 > Building this has been a useful exercise in bringing structured AI, deterministic business rules, privacy boundaries, and accessible product design together.

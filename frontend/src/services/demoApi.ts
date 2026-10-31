@@ -150,7 +150,7 @@ export const offlineDemoApi = {
     return envelope(clone(task));
   },
 
-  async updateVendor(eventId: string, vendorId: string, updates: Partial<Pick<Vendor, 'status' | 'name' | 'contact' | 'quoteMinor' | 'note'>>): Promise<ApiEnvelope<Vendor>> {
+  async updateVendor(eventId: string, vendorId: string, updates: Partial<Pick<Vendor, 'status' | 'name' | 'contact' | 'note'>>): Promise<ApiEnvelope<Vendor>> {
     await pause(220);
     const event = findEvent(eventId);
     const vendor = event.vendors.find((item) => item.id === vendorId);
@@ -161,6 +161,22 @@ export const offlineDemoApi = {
     event.versionNumber += 1;
     persist();
     return envelope(clone(vendor));
+  },
+
+  async saveVendorQuote(eventId: string, vendorId: string, amountMinor: number, currency: string): Promise<ApiEnvelope<EventRecord>> {
+    await pause(220);
+    const event = findEvent(eventId);
+    const vendor = event.vendors.find((item) => item.id === vendorId);
+    if (!vendor) throw new DemoApiError('not_found', 'Vendor checklist item not found.', 404);
+    if (currency !== event.currency || !Number.isSafeInteger(amountMinor) || amountMinor < 0) {
+      throw new DemoApiError('validation_failed', 'Enter a valid quote amount in the event currency.', 422);
+    }
+    vendor.quoteMinor = amountMinor;
+    vendor.provenance = 'user_entered';
+    event.revision += 1;
+    event.versionNumber += 1;
+    persist();
+    return envelope(clone(event));
   },
 
   async addVendor(eventId: string, category: string, name = ''): Promise<ApiEnvelope<Vendor>> {

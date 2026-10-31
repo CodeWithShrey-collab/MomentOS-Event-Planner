@@ -274,6 +274,7 @@ class Vendor(db.Model):
     status = db.Column(String(32), nullable=False, default="to_find")
     information_source = db.Column(String(32), nullable=False)
     notes = db.Column(String(1200))
+    follow_up_checklist = db.Column(JSON, nullable=True)
     created_at = db.Column(DateTime(timezone=True), nullable=False, default=utc_now)
 
     plan_version = db.relationship("EventPlanVersion", back_populates="vendors")
@@ -348,6 +349,7 @@ class Task(db.Model):
     due_at = db.Column(DateTime(timezone=True))
     due_local_date = db.Column(Date)
     phase = db.Column(String(80))
+    relative_timing_suggestion = db.Column(String(160))
     priority = db.Column(String(12), nullable=False, default="medium")
     source = db.Column(String(32), nullable=False)
     completion_source = db.Column(String(16))

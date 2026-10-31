@@ -31,11 +31,13 @@ interface EventTaskDto {
   logical_id: string;
   title: string;
   phase?: string | null;
+  due_at?: string | null;
   due_local_date?: string | null;
   status: string;
   priority?: string | null;
   owner_label?: string | null;
   dependencies?: string[];
+  relative_timing_suggestion?: string | null;
 }
 
 interface EventBudgetItemDto {
@@ -44,7 +46,9 @@ interface EventBudgetItemDto {
 }
 
 interface VendorQuoteDto {
+  id?: string;
   amount_minor?: number | null;
+  created_at?: string | null;
 }
 
 interface EventVendorDto {
@@ -58,6 +62,7 @@ interface EventVendorDto {
   information_source?: string | null;
   notes?: string | null;
   quotes?: VendorQuoteDto[];
+  follow_up_checklist?: string[] | null;
 }
 
 interface EventSummaryDto {
@@ -65,6 +70,7 @@ interface EventSummaryDto {
   revision?: number;
   budget_limit_minor?: number | null;
   event_date?: string | null;
+  timezone?: string | null;
   location_label?: string | null;
   guest_count?: number | null;
   venue_capacity?: number | null;
@@ -85,6 +91,7 @@ interface EventResponseDto {
   currency: string;
   budget_limit_minor?: number | null;
   event_date?: string | null;
+  timezone?: string | null;
   location_label?: string | null;
   draft_fields?: { guest_count?: number | null; preferences?: unknown } | null;
   current_version_no?: number | null;
@@ -122,12 +129,21 @@ interface DraftTaskDto {
   status?: string | null;
   priority?: string | null;
   depends_on_keys?: string[];
+  relative_timing_suggestion?: string | null;
 }
 
 interface DraftVendorDto {
   key: string;
   category: string;
   why?: string | null;
+  follow_up_checklist?: string[] | null;
+}
+
+interface VendorQuoteResponseDto {
+  id?: string;
+  amount_minor: number;
+  currency: string;
+  created_at?: string | null;
 }
 
 interface EventPlanDraftDto {
@@ -196,10 +212,11 @@ interface CopilotResponseDto {
   known_references?: string[];
 }
 
-type VendorUpdates = Partial<Pick<Vendor, 'status' | 'name' | 'contact' | 'quoteMinor' | 'note'>>;
+type VendorUpdates = Partial<Pick<Vendor, 'status' | 'name' | 'contact' | 'note'>>;
 
 const pendingPlans = new Map<string, EventPlanDraftDto>();
 const previews = new Map<string, RippleResponseDto>();
+const pendingQuoteKeys = new Map<string, string>();
 const env = <T,>(data: T): ApiEnvelope<T> => ({ data, request_id: 'server' });
 const eventPath = (id: string) => `/events/${encodeURIComponent(id)}`;
 
@@ -240,6 +257,44 @@ function taskPriority(priority: string | null | undefined): TaskPriority {
   return 'medium';
 }
 
+function taskDueLabel(
+  dueDate: string | null | undefined,
+  dueAt: string | null | undefined,
+  timing: string | null | undefined,
+  timeZone: string | null | undefined,
+): string {
+  if (dueDate) return dueDate;
+  if (dueAt) {
+    const parsedDate = new Date(dueAt);
+    if (Number.isNaN(parsedDate.getTime())) return `Scheduled: ${dueAt}`;
+    if (timeZone) {
+      try {
+        const formatted = new Intl.DateTimeFormat('en-IN', {
+          dateStyle: 'medium',
+          timeStyle: 'short',
+          timeZone,
+        }).format(parsedDate);
+        return `Scheduled: ${formatted} (${timeZone})`;
+      } catch {
+        // Preserve the server timestamp if the stored timezone is unavailable.
+      }
+    }
+    return `Scheduled: ${dueAt}`;
+  }
+  return timing?.trim() ? `Suggested timing: ${timing}` : 'Date to decide';
+}
+
+function latestQuote(quotes: VendorQuoteDto[] | undefined): VendorQuoteDto | undefined {
+  if (!quotes?.length) return undefined;
+  return quotes.reduce((latest, quote) => {
+    const latestParsed = latest.created_at ? Date.parse(latest.created_at) : Number.NaN;
+    const quoteParsed = quote.created_at ? Date.parse(quote.created_at) : Number.NaN;
+    const latestTime = Number.isFinite(latestParsed) ? latestParsed : Number.NEGATIVE_INFINITY;
+    const quoteTime = Number.isFinite(quoteParsed) ? quoteParsed : Number.NEGATIVE_INFINITY;
+    return quoteTime > latestTime ? quote : latest;
+  }, quotes[0]!);
+}
+
 function vendorStatus(status: string): VendorStatus {
   switch (status) {
     case 'contacted_by_user': return 'contacted';
@@ -250,6 +305,7 @@ function vendorStatus(status: string): VendorStatus {
 }
 
 function mapVendor(raw: EventVendorDto): Vendor {
+  const quote = latestQuote(raw.quotes);
   return {
     id: raw.logical_id,
     category: raw.category,
@@ -257,9 +313,10 @@ function mapVendor(raw: EventVendorDto): Vendor {
     contact: raw.contact_name ?? raw.email ?? raw.phone ?? null,
     status: vendorStatus(raw.status),
     estimateMinor: null,
-    quoteMinor: raw.quotes?.[0]?.amount_minor ?? null,
+    quoteMinor: quote?.amount_minor ?? null,
     provenance: raw.information_source === 'user_entered' ? 'user_entered' : 'suggested',
     note: raw.notes ?? '',
+    followUpChecklist: stringList(raw.follow_up_checklist),
   };
 }
 
@@ -278,12 +335,18 @@ function mapEvent(raw: EventResponseDto): EventRecord {
     id: task.logical_id,
     title: task.title,
     phase: task.phase ?? 'before_event',
-    dueLabel: task.due_local_date ?? 'Date to decide',
+    dueLabel: taskDueLabel(
+      task.due_local_date,
+      task.due_at,
+      task.relative_timing_suggestion,
+      summary.timezone ?? raw.timezone,
+    ),
     dueDays: null,
     status: taskStatus(task.status),
     priority: taskPriority(task.priority),
     owner: task.owner_label ?? null,
     dependencies: task.dependencies ?? [],
+    relativeTimingSuggestion: task.relative_timing_suggestion ?? null,
   }));
 
   return {
@@ -346,12 +409,13 @@ function mapDraft(eventId: string, raw: EventPlanDraftDto): PlanDraft {
       id: task.key,
       title: task.title,
       phase: task.phase ?? 'before_event',
-      dueLabel: 'Date to decide',
+      dueLabel: taskDueLabel(null, null, task.relative_timing_suggestion, null),
       dueDays: null,
       status: taskStatus(task.status ?? 'not_started'),
       priority: taskPriority(task.priority),
       owner: null,
       dependencies: task.depends_on_keys ?? [],
+      relativeTimingSuggestion: task.relative_timing_suggestion ?? null,
     })),
     vendors: (raw.vendor_categories ?? []).map((vendor) => ({
       id: vendor.key,
@@ -363,6 +427,7 @@ function mapDraft(eventId: string, raw: EventPlanDraftDto): PlanDraft {
       quoteMinor: null,
       provenance: 'suggested',
       note: vendor.why ?? '',
+      followUpChecklist: stringList(vendor.follow_up_checklist),
     })),
     ideas,
     aiStatus: mode === 'live' ? 'live' : mode === 'mock' ? 'mock' : 'offline_demo',
@@ -547,6 +612,37 @@ export const liveApi = {
       body: JSON.stringify(bodyMap),
     });
     return env(mapVendor(body.data));
+  },
+
+  async saveVendorQuote(
+    eventId: string,
+    vendorId: string,
+    amountMinor: number,
+    currency: string,
+  ): Promise<ApiEnvelope<EventRecord>> {
+    if (!Number.isSafeInteger(amountMinor) || amountMinor < 0) {
+      throw new Error('Enter a valid non-negative quote amount in minor currency units.');
+    }
+    const operation = `${eventId}:${vendorId}:${currency}:${amountMinor}`;
+    let idempotencyKey = pendingQuoteKeys.get(operation);
+    if (!idempotencyKey) {
+      idempotencyKey = crypto.randomUUID();
+      pendingQuoteKeys.set(operation, idempotencyKey);
+    }
+    const headers = new Headers(eventHeaders(eventId));
+    headers.set('Idempotency-Key', idempotencyKey);
+    await request<VendorQuoteResponseDto>(`${eventPath(eventId)}/vendors/${encodeURIComponent(vendorId)}/quotes`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ amount_minor: amountMinor, currency, scope_note: 'User-entered vendor quote' }),
+    });
+    const refreshed = await this.getEvent(eventId);
+    const vendor = refreshed.data.vendors.find((item) => item.id === vendorId);
+    if (!vendor || vendor.quoteMinor !== amountMinor) {
+      throw new Error('The quote request was accepted, but the saved amount could not be verified after reloading the event. Retry is safe.');
+    }
+    pendingQuoteKeys.delete(operation);
+    return refreshed;
   },
 
   async addVendor(eventId: string, category: string, name = ''): Promise<ApiEnvelope<Vendor>> {
