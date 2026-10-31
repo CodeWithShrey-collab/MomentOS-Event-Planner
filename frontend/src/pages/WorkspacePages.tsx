@@ -14,7 +14,7 @@ type PageProps = { event: EventRecord; onEventUpdated: (event: EventRecord) => v
 
 function BudgetDonut({ event }: { event: EventRecord }) {
   const data = event.categories.map((category, index) => ({ name: category.name, value: category.plannedMinor, color: categoryColorToken(category.id, index) }));
-  return <div className="budget-donut-wrap"><div className="budget-donut-chart" aria-label="Budget allocation chart"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={data} dataKey="value" nameKey="name" innerRadius="72%" outerRadius="96%" paddingAngle={2} stroke="none">{data.map((item) => <Cell key={item.name} fill={item.color} />)}</Pie><Tooltip formatter={(value) => formatRupees(Number(value))} contentStyle={{ borderRadius: 12, border: '1px solid var(--line)', fontFamily: 'Cabinet Grotesk, sans-serif' }} /></PieChart></ResponsiveContainer><div className="donut-center"><span>PLANNED</span><strong>{formatRupees(sumCategories(event.categories))}</strong></div></div><div className="chart-legend">{data.slice(0, 5).map((item) => <div key={item.name}><span style={{ background: item.color }} /><span>{item.name}</span><strong>{formatRupees(item.value)}</strong></div>)}</div></div>;
+  return <div className="budget-donut-wrap"><div className="budget-donut-chart" aria-label="Budget allocation chart"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={data} dataKey="value" nameKey="name" innerRadius="72%" outerRadius="96%" paddingAngle={2} stroke="none">{data.map((item) => <Cell key={item.name} fill={item.color} />)}</Pie><Tooltip formatter={(value) => formatRupees(Number(value))} contentStyle={{ borderRadius: 12, border: '1px solid var(--line)', fontFamily: 'Satoshi, sans-serif' }} /></PieChart></ResponsiveContainer><div className="donut-center"><span>PLANNED</span><strong>{formatRupees(sumCategories(event.categories))}</strong></div></div><div className="chart-legend">{data.slice(0, 5).map((item) => <div key={item.name}><span style={{ background: item.color }} /><span>{item.name}</span><strong>{formatRupees(item.value)}</strong></div>)}</div></div>;
 }
 
 function nextTask(event: EventRecord): EventTask | undefined {
@@ -51,13 +51,13 @@ export function BudgetPage({ event, onEventUpdated }: PageProps) {
 
   async function saveCategory(categoryId: string) {
     const amount = parseRupeesToMinor(draftValues[categoryId] ?? '');
-    if (amount === null) { showToast('Check that amount', 'Use rupees with up to two decimal places.'); return; }
+    if (amount === null) { showToast('Check that amount', 'Use rupees with up to two decimal places.', 'error'); return; }
     setSavingId(categoryId);
     try {
       const result = await demoApi.updateCategory(event.id, categoryId, amount);
       onEventUpdated(result.data);
       showToast('Budget updated', demoApi.mode === 'offline_demo' ? 'This change is saved in your browser demo.' : 'This change is saved to your event workspace.');
-    } catch (error) { showToast('Could not update this category', error instanceof Error ? error.message : 'Try again.'); }
+    } catch (error) { showToast('Could not update this category', error instanceof Error ? error.message : 'Try again.', 'error'); }
     finally { setSavingId(null); }
   }
 
@@ -98,7 +98,7 @@ export function RipplePage({ event, onEventUpdated }: PageProps) {
       const result = await demoApi.commitRipple(preview, true);
       onEventUpdated(result.data); setDialogOpen(false); setPreview(null); setValue(field === 'guest_count' ? String(result.data.guestCount + 10) : String(result.data.budgetLimitMinor / 100));
       showToast('Change saved', 'Your plan has a new saved version.');
-    } catch (error) { setDialogOpen(false); setPreviewError(error instanceof Error ? error.message : 'The change was not saved.'); showToast('Preview not saved', 'Review the current plan and run a fresh simulation.'); }
+    } catch (error) { setDialogOpen(false); setPreviewError(error instanceof Error ? error.message : 'The change was not saved.'); showToast('Preview not saved', 'Review the current plan and run a fresh simulation.', 'error'); }
     finally { setSaving(false); }
   }
 
@@ -149,7 +149,7 @@ export function MomentMapPage({ event, onEventUpdated }: PageProps) {
   async function toggle(taskId: string) {
     setUpdating(taskId);
     try { await demoApi.toggleTask(event.id, taskId); const latest = await demoApi.getEvent(event.id); onEventUpdated(latest.data); showToast('Task status updated', 'Saved to your event plan.'); }
-    catch (error) { showToast('Could not update task', error instanceof Error ? error.message : 'Try again.'); }
+    catch (error) { showToast('Could not update task', error instanceof Error ? error.message : 'Try again.', 'error'); }
     finally { setUpdating(null); }
   }
   return <div className="page-wrap map-page">
@@ -172,14 +172,14 @@ export function VendorsPage({ event, onEventUpdated }: PageProps) {
   async function saveVendor(vendor: Vendor, updates: Partial<Pick<Vendor, 'status' | 'name' | 'contact' | 'quoteMinor'>>) {
     setSavingVendor(vendor.id);
     try { await demoApi.updateVendor(event.id, vendor.id, updates); const updated = await demoApi.getEvent(event.id); onEventUpdated(updated.data); showToast('Vendor details saved', 'This entry is user-managed.'); }
-    catch (error) { showToast('Could not save vendor details', error instanceof Error ? error.message : 'Try again.'); }
+    catch (error) { showToast('Could not save vendor details', error instanceof Error ? error.message : 'Try again.', 'error'); }
     finally { setSavingVendor(null); }
   }
   async function addVendor(eventObject: FormEvent<HTMLFormElement>) {
     eventObject.preventDefault(); if (category.trim().length < 2) return;
     setSavingNew(true);
     try { await demoApi.addVendor(event.id, category, name); const updated = await demoApi.getEvent(event.id); onEventUpdated(updated.data); setCategory(''); setName(''); showToast('Checklist category added', 'Supplier details are still yours to enter.'); }
-    catch (error) { showToast('Could not add category', error instanceof Error ? error.message : 'Try again.'); }
+    catch (error) { showToast('Could not add category', error instanceof Error ? error.message : 'Try again.', 'error'); }
     finally { setSavingNew(false); }
   }
   return <div className="page-wrap vendor-page">
@@ -198,10 +198,10 @@ export function ScenariosPage({ event }: PageProps) {
   const [loading, setLoading] = useState(false);
   async function compare() {
     const values = inputs.map(Number);
-    if (values.some((value) => !Number.isInteger(value) || value < 1 || value > 10000)) { showToast('Check both guest counts', 'Enter a whole number between 1 and 10,000.'); return; }
+    if (values.some((value) => !Number.isInteger(value) || value < 1 || value > 10000)) { showToast('Check both guest counts', 'Enter a whole number between 1 and 10,000.', 'error'); return; }
     setLoading(true);
     try { const response = await demoApi.compareScenarios(event.id, [values[0]!, values[1]!, event.guestCount]); setResults(response.data); }
-    catch (error) { showToast('Could not compare scenarios', error instanceof Error ? error.message : 'Try again.'); }
+    catch (error) { showToast('Could not compare scenarios', error instanceof Error ? error.message : 'Try again.', 'error'); }
     finally { setLoading(false); }
   }
   const maxTotal = Math.max(...(results ?? []).map((result) => result.totalMinor), 1);
